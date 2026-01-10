@@ -1,0 +1,5 @@
+{
+  "name": "PRR",
+  "description": "An AI-powered betting intelligence system that utilizes simulated ML models and game theory to generate mathematically optimized parlay recommendations.",
+  "requestFramePermissions": []
+}
