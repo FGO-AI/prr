@@ -1,8 +1,13 @@
+
 import React from 'react';
+// Added TrendingDown and List icons to fix the 'no exported member' errors
 import { 
   Activity, 
   TrendingUp, 
+  TrendingDown,
+  List,
   ShieldAlert, 
+  Shield,
   BrainCircuit, 
   Zap, 
   BarChart3,
@@ -36,7 +41,10 @@ import {
 export { 
   Activity, 
   TrendingUp, 
+  TrendingDown,
+  List,
   ShieldAlert, 
+  Shield,
   BrainCircuit, 
   Zap, 
   BarChart3,

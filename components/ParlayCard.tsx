@@ -1,13 +1,8 @@
+
 import React, { useMemo, useState } from 'react';
 import { ParlayRecommendation, BetLeg } from '../types';
 import { TrendingUp, ShieldAlert, Activity, ChevronRight, BarChart3, Globe, Zap, Search, HelpCircle, AlertCircle, GitMerge, CheckCircle2 } from './Icons';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts';
-
-interface ParlayCardProps {
-  parlay: ParlayRecommendation;
-  index: number;
-  onPlayerClick: (playerName: string) => void;
-}
 
 // --- Rationale Tooltip Logic ---
 const getDefinition = (text: string) => {
@@ -15,10 +10,16 @@ const getDefinition = (text: string) => {
   if (lower.includes('bayesian')) return "Bayesian Inference: A statistical method that updates the probability of a hypothesis as more evidence (recent player form) becomes available.";
   if (lower.includes('regression')) return "Regression to Mean: The statistical tendency for extreme performances (hot/cold streaks) to eventually return to the player's long-term average.";
   if (lower.includes('implied') || lower.includes('edge')) return "Positive EV (+EV): A scenario where our model's calculated win probability is higher than the probability implied by the bookmaker's odds.";
-  if (lower.includes('correlation')) return "Correlation Matrix: Measures how two events move together. In parlays, highly correlated legs (e.g., QB yards & WR yards) increase the true probability of winning relative to the payout.";
-  if (lower.includes('sharp') || lower.includes('money')) return "Sharp Action: Heavy betting volume from professional bettors, often indicating valuable information not yet reflected in the public line.";
-  if (lower.includes('variance')) return "Variance: A measure of volatility. High variance players have a wide range of outcomes (boom or bust), while low variance players are consistent.";
-  return "Algorithmic Insight: This projection is derived from a weighted ensemble of decision trees (XGBoost) and historical situational analysis.";
+  if (lower.includes('correlation')) return "Correlation Matrix: Measures how two events move together. In parlays, highly correlated legs (e.g., QB yards & WR yards) increase the true probability of winning.";
+  if (lower.includes('z-score')) return "Z-Score: Measures how many standard deviations the betting line is from the projected mean (μ).";
+  if (lower.includes('sigma') || lower.includes('deviation')) return "Standard Deviation (σ): Quantifies volatility; higher values indicate higher variance in player performance.";
+  if (lower.includes('pace')) return "Pace Adjustment: Correcting projections based on the expected number of possessions in a specific matchup.";
+  if (lower.includes('kelly')) return "Kelly Criterion: A formula used to determine the optimal size of a series of bets to maximize long-term wealth.";
+  if (lower.includes('usage')) return "Usage Rate: The percentage of team plays a player is involved in while on the court/field.";
+  if (lower.includes('efficiency')) return "Defensive Efficiency: Points allowed per possession by an opponent, used to scale offensive projections.";
+  if (lower.includes('poisson')) return "Poisson Distribution: A discrete probability distribution that expresses the probability of a given number of events occurring in a fixed interval.";
+  if (lower.includes('sharp') || lower.includes('money')) return "Sharp Action: Heavy betting volume from professional bettors, indicating valuable market information.";
+  return "Quant Insight: High-confidence projection derived from a multi-factor regression model and historical situational variance analysis.";
 };
 
 const RationaleTooltip: React.FC<{ text: string }> = ({ text }) => {
@@ -28,15 +29,15 @@ const RationaleTooltip: React.FC<{ text: string }> = ({ text }) => {
   return (
     <div className="relative inline-flex items-center ml-2">
       <button 
-        className="text-gray-600 hover:text-emerald-400 transition-colors cursor-help"
+        className="text-gray-600 hover:text-emerald-400 transition-colors cursor-help outline-none"
         onMouseEnter={() => setIsVisible(true)}
         onMouseLeave={() => setIsVisible(false)}
-        onClick={() => setIsVisible(!isVisible)}
+        onClick={(e) => { e.stopPropagation(); setIsVisible(!isVisible); }}
       >
         <HelpCircle size={12} />
       </button>
       {isVisible && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-950 border border-emerald-500/30 rounded-lg shadow-2xl z-50 animate-fadeIn">
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-950 border border-emerald-500/30 rounded-lg shadow-2xl z-[60] animate-fadeIn pointer-events-none">
             <div className="flex items-start gap-2">
                 <AlertCircle size={14} className="text-emerald-400 mt-0.5 shrink-0" />
                 <div>
@@ -73,7 +74,7 @@ const CorrelationTooltip: React.FC<{ statType: string }> = ({ statType }) => {
   return (
     <div className="relative inline-flex items-center ml-1 z-20">
        <button 
-        className="text-gray-600 hover:text-purple-400 transition-colors"
+        className="text-gray-600 hover:text-purple-400 transition-colors cursor-help outline-none"
         onMouseEnter={() => setIsVisible(true)}
         onMouseLeave={() => setIsVisible(false)}
         onClick={(e) => { e.stopPropagation(); setIsVisible(!isVisible); }}
@@ -81,7 +82,7 @@ const CorrelationTooltip: React.FC<{ statType: string }> = ({ statType }) => {
         <GitMerge size={12} />
       </button>
        {isVisible && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-3 bg-gray-950 border border-purple-500/30 rounded-lg shadow-2xl z-50 animate-fadeIn pointer-events-none">
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-3 bg-gray-950 border border-purple-500/30 rounded-lg shadow-2xl z-[60] animate-fadeIn pointer-events-none">
             <div className="flex items-start gap-2">
                 <GitMerge size={14} className="text-purple-400 mt-0.5 shrink-0" />
                 <div>
@@ -100,17 +101,30 @@ const CorrelationTooltip: React.FC<{ statType: string }> = ({ statType }) => {
 const HighlightedRationale: React.FC<{ text: string }> = ({ text }) => {
     if (!text) return null;
     
-    // Split by common patterns: "Hit in X/Y", "Rank X", "L10", "Defense"
-    const regex = /((?:Hit in \d+\/\d+)|(?:\d+\/\d+)|(?:L\d+)|(?:Rank #?\d+)|(?:\d+th)|(?:vs \w+)|(?:Pace)|(?:Usage)|(?:Def))/gi;
+    // Improved regex to handle ranks, hit rates, percentages, and situational keywords
+    const regex = /((?:DEF: #?\d+)|(?:PACE: [+-]?\d+(?:\.\d+)?%)|(?:HIT: \d+\/\d+)|(?:SITUATIONAL: [^,.]+)|(?:L\d+)|(?:Rank #?\d+)|(?:\d+th)|(?:vs \w+)|(?:Pace)|(?:Usage)|(?:Def))/gi;
     const parts = text.split(regex);
     
     return (
         <span className="flex-1">
             {parts.map((part, i) => {
                 if (part.match(regex)) {
-                    return <span key={i} className="text-gray-200 font-bold font-mono text-[11px] bg-gray-800/50 px-1 rounded mx-0.5">{part}</span>;
+                    let colorClass = 'text-gray-200 bg-gray-800/50';
+                    if (part.toUpperCase().startsWith('DEF:')) colorClass = 'text-orange-400 bg-orange-400/10 border-orange-400/20';
+                    if (part.toUpperCase().startsWith('PACE:')) colorClass = 'text-blue-400 bg-blue-400/10 border-blue-400/20';
+                    if (part.toUpperCase().startsWith('HIT:')) colorClass = 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20';
+                    if (part.toUpperCase().startsWith('SITUATIONAL:')) colorClass = 'text-purple-400 bg-purple-400/10 border-purple-400/20';
+
+                    return (
+                        <span 
+                          key={i} 
+                          className={`${colorClass} font-bold font-mono text-[10px] px-1.5 py-0.5 rounded border mx-0.5 inline-flex items-center gap-1 transition-all hover:scale-105`}
+                        >
+                          {part}
+                        </span>
+                    );
                 }
-                return <span key={i}>{part}</span>;
+                return <span key={i} className="text-gray-400">{part}</span>;
             })}
         </span>
     );
@@ -180,16 +194,23 @@ const LegRow: React.FC<{ leg: BetLeg; onPlayerClick: (name: string) => void }> =
         {leg.rationale && (
             <div className="mt-2 pt-2 border-t border-gray-800 flex items-start gap-2 relative z-10">
                 <Globe size={12} className="text-blue-400 mt-0.5 shrink-0" />
-                <p className="text-xs text-gray-400 font-mono leading-relaxed flex items-center flex-wrap">
-                    <span className="text-blue-400 font-semibold mr-1">Intel:</span> 
+                <div className="text-[11px] text-gray-400 font-mono leading-relaxed flex items-start flex-wrap gap-1">
+                    <span className="text-blue-400 font-bold uppercase tracking-widest shrink-0">Intel:</span> 
                     <HighlightedRationale text={leg.rationale} />
                     <RationaleTooltip text={leg.rationale} />
-                </p>
+                </div>
             </div>
         )}
       </div>
     );
 };
+
+// Define the interface for the ParlayCard component props
+interface ParlayCardProps {
+  parlay: ParlayRecommendation;
+  index: number;
+  onPlayerClick: (name: string) => void;
+}
 
 export const ParlayCard: React.FC<ParlayCardProps> = ({ parlay, index, onPlayerClick }) => {
   

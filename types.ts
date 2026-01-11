@@ -17,31 +17,46 @@ export interface BetLeg {
   playerName: string;
   team: string;
   opponent: string;
-  statType: string; // e.g., "Points", "Rebounds", "Passing Yards"
+  statType: string;
   line: number;
   prediction: 'Over' | 'Under';
-  bookOdds: number; // American odds, e.g., -110
-  modelProb: number; // 0.0 to 1.0
-  impliedProb: number; // 0.0 to 1.0
-  edge: number; // Percentage points
+  bookOdds: number;
+  modelProb: number;
+  impliedProb: number;
+  edge: number;
   rationale: string;
-  injuryStatus?: string; // e.g. "Active", "Probable", "Questionable", "GTD"
-  leagueAvg?: number; // Comparison baseline
-  recentHitRate?: string; // e.g. "8/10"
+  injuryStatus?: string;
+  leagueAvg?: number;
+  recentHitRate?: string;
+  
+  // New Engine Variables
+  x10?: number;
+  x20?: number;
+  xSeason?: number;
+  sigma?: number;
+  expectedMins?: number;
+  avgMins?: number;
+  expectedPace?: number;
+  leaguePace?: number;
+  oppAllowed?: number;
+  leagueAllowed?: number;
+  muFinal?: number;
+  zScore?: number;
 }
 
 export interface ParlayRecommendation {
-  type?: 'parlay' | 'player_profile'; // Discriminator for UI rendering
+  type?: 'parlay' | 'player_profile';
   id: string;
   legs: BetLeg[];
-  totalOdds: number; // American odds, e.g., +260
-  jointProbAdjusted: number; // Correlation adjusted probability
-  expectedValue: number; // EV %
-  kellyStake: number; // Recommended bankroll %
-  correlationScore: number; // 0 to 1, how correlated the plays are
-  varianceScore: number; // High variance = high risk
+  totalOdds: number;
+  jointProbAdjusted: number;
+  expectedValue: number;
+  kellyStake: number;
+  correlationScore: number;
+  varianceScore: number;
   summary: string;
   timestamp: string;
+  roiPotential?: number;
 }
 
 export interface UserInputState {
