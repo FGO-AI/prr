@@ -1,6 +1,6 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { League, RiskLevel, ParlayRecommendation, BetLeg } from "../types";
+import { League, RiskLevel, ParlayRecommendation, BetLeg, GameLogEntry } from "../types";
 
 const cleanJsonText = (text: string): string => {
     const firstBrace = text.indexOf('{');
@@ -36,6 +36,13 @@ const parseResponse = (text: string): ParlayRecommendation[] => {
                 injuryStatus: leg.injuryStatus || "Active",
                 leagueAvg: Number(leg.leagueAvg) || 0,
                 recentHitRate: leg.recentHitRate || "N/A",
+                recentGames: (leg.recentGames || []).map((g: any) => ({
+                    date: g.date || "N/A",
+                    opponent: g.opponent || "N/A",
+                    value: Number(g.value) || 0,
+                    minutes: Number(g.minutes) || 0,
+                    hit: !!g.hit
+                })),
                 
                 // Raw Engine variables from Gemini Search
                 x10: Number(leg.x10) || Number(leg.line) * 0.95,
@@ -83,46 +90,46 @@ export const generateParlays = async (
     const modelId = "gemini-3-pro-preview";
 
     const prompt = `
-      OPERATE AS A HIGH-FREQUENCY QUANTITATIVE SPORTS ENGINE.
-      OBJECTIVE: 30% ROI via mispriced player props for TODAY (${dateStamp}).
+      OPERATE AS A COMPREHENSIVE MULTI-MARKET SPORTS DATA AGGREGATOR.
+      OBJECTIVE: EXPOSE EVERY SINGLE BETTABLE PROP FOR THE REQUESTED PLAYER(S) for TODAY (${dateStamp}).
       
-      STEP 1: USE googleSearch for:
-      - "${league} games scheduled for ${dateStamp}"
-      - "${filters || 'Top stars'} player prop lines ${dateStamp}"
-      - "Specific stats for ${filters || 'current active players'}: Last 10, Last 20, Season Avg, Standard Deviation"
-      - "Team Pace projections and defensive efficiency against specific positions today"
+      STEP 1: USE googleSearch to perform an exhaustive scan for "${filters}":
+      - For NBA: Retrieve EVERY line (Pts, Reb, Ast, 3PT, Stl, Blk, TO, PRA, P+R, P+A, R+A).
+      - For NFL: Retrieve Pass Yds, Pass TDs, Rush Yds, Rec Yds, Receptions, Anytime TD.
+      - For MLB: Retrieve Hits, HRs, TB, K, ER.
 
-      STEP 2: ENHANCE RATIONALE. For each leg's "rationale" field, you MUST include:
-      - "DEF: #[Rank]" (e.g. DEF: #28 vs Pts)
-      - "PACE: [Percentage Delta]" (e.g. PACE: +4.2%)
-      - "HIT: [x/y]" (e.g. HIT: 8/10 L10)
-      - "SITUATIONAL: [Key Factor]" (e.g. SITUATIONAL: Back-to-back game)
+      STEP 2: STAT-SPECIFIC LOGS (CRITICAL). 
+      For EACH individual leg (statType), search for the actual results of the player's last 5-10 games SPECIFIC to that stat.
+      Example: If the leg is "Assists", the 'recentGames' array for THAT leg must contain how many ASSISTS the player got in those games. Do NOT use points logs for an assist prop.
 
-      STEP 3: RETURN DATA IN JSON. provide these quantitative variables for our engine:
-      - x10, x20, xSeason (averages)
-      - sigma (Standard Deviation)
-      - expectedMins, avgMins
-      - expectedPace, leaguePace
-      - oppAllowed, leagueAllowed
+      STEP 3: QUANTITATIVE PRECISION. For each unique stat, calculate:
+      - recentGames: (5 most recent actual outcomes FOR THAT STAT TYPE)
+      - x10, x20, xSeason (actual averages for that specific stat)
+      - sigma (Standard Deviation for that specific stat)
+      - DEF: #[Rank] vs that specific stat category.
 
-      OUTPUT FORMAT (STRICT):
+      OUTPUT FORMAT (STRICT JSON):
       {
         "recommendations": [
           {
             "type": "player_profile",
-            "summary": "Detailed ROI rationale...",
-            "expectedValue": 15.5,
-            "kellyStake": 2.5,
+            "summary": "Full market analysis for ${filters}...",
             "legs": [
               {
-                "playerName": "string", "team": "string", "opponent": "string", "statType": "string",
+                "playerName": "${filters}", "team": "string", "opponent": "string", "statType": "Points",
+                "line": number, "prediction": "Over", "bookOdds": number, 
+                "recentGames": [ { "date": "string", "opponent": "string", "value": number, "minutes": number, "hit": boolean } ],
+                "x10": number, "x20": number, "xSeason": number, "sigma": number, "expectedMins": number, "avgMins": number,
+                "expectedPace": number, "leaguePace": number, "oppAllowed": number, "leagueAllowed": number,
+                "rationale": "DEF: #22, PACE: +1.2%, HIT: 6/10 L10"
+              },
+              {
+                "playerName": "${filters}", "team": "string", "opponent": "string", "statType": "Assists",
                 "line": number, "prediction": "Over", "bookOdds": number,
-                "x10": number, "x20": number, "xSeason": number, "sigma": number,
-                "expectedMins": number, "avgMins": number,
-                "expectedPace": number, "leaguePace": number,
-                "oppAllowed": number, "leagueAllowed": number,
-                "rationale": "DEF: #28, PACE: +5.2%, HIT: 7/10, SITUATIONAL: High usage expected due to injury."
+                "recentGames": [ { "date": "string", "opponent": "string", "value": number, "minutes": number, "hit": boolean } ],
+                "rationale": "DEF: #5, PACE: +1.2%, HIT: 8/10 L10"
               }
+              ... repeat for EVERY found bettable market ...
             ]
           }
         ]

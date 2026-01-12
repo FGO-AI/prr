@@ -1,3 +1,4 @@
+
 export enum League {
   NFL = 'NFL',
   NBA = 'NBA',
@@ -10,6 +11,14 @@ export enum RiskLevel {
   MEDIUM = 'Balanced (Standard)',
   HIGH = 'Aggressive (High Return)',
   VERY_HIGH = 'Moonshot (Extreme Odds)'
+}
+
+export interface GameLogEntry {
+  date: string;
+  opponent: string;
+  value: number;
+  minutes: number;
+  hit: boolean;
 }
 
 export interface BetLeg {
@@ -28,6 +37,7 @@ export interface BetLeg {
   injuryStatus?: string;
   leagueAvg?: number;
   recentHitRate?: string;
+  recentGames?: GameLogEntry[]; // Real data from search
   
   // New Engine Variables
   x10?: number;
