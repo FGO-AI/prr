@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { generateParlays } from './services/geminiService';
+
+import { useState, useEffect } from 'react';
+import { generateParlays, fetchTrendingPicks } from './services/geminiService';
 import { League, RiskLevel, UserInputState, ParlayRecommendation } from './types';
 import { InputForm } from './components/InputForm';
 import { PlayerProfileCard } from './components/PlayerProfileCard';
@@ -14,6 +15,7 @@ function App() {
   const [currentView, setCurrentView] = useState<ViewState>('landing');
   const [isLoading, setIsLoading] = useState(false);
   const [recommendations, setRecommendations] = useState<ParlayRecommendation[]>([]);
+  const [trendingPicks, setTrendingPicks] = useState<ParlayRecommendation[]>([]);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<UserInputState>({
@@ -24,6 +26,19 @@ function App() {
     statType: 'Any',
     advancedMetric: 'Standard'
   });
+
+  // Fetch trending picks for the landing page once on mount
+  useEffect(() => {
+    const getTrending = async () => {
+        try {
+            const picks = await fetchTrendingPicks();
+            setTrendingPicks(picks);
+        } catch (err) {
+            console.error("Failed to fetch trending picks:", err);
+        }
+    };
+    getTrending();
+  }, []);
 
   useEffect(() => {
     if (currentView === 'app' && recommendations.length === 0 && !isLoading) {
@@ -70,6 +85,7 @@ function App() {
             onEnter={() => setCurrentView('signup')} 
             hasActiveSession={recommendations.length > 0 || formData.filters !== ''}
             onResume={() => setCurrentView('app')} 
+            trendingPicks={trendingPicks}
         />
     );
   }

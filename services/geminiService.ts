@@ -13,6 +13,24 @@ const cleanJsonText = (text: string): string => {
     return cleaned;
 };
 
+const getEffectiveMarketDate = () => {
+    const now = new Date();
+    // Get current time in Mountain Time
+    const mtStr = now.toLocaleString("en-US", { timeZone: "America/Denver", hour12: false });
+    // Expected format: "MM/DD/YYYY, HH:mm:ss"
+    const parts = mtStr.split(', ');
+    const timePart = parts[1];
+    const hour = parseInt(timePart.split(':')[0], 10);
+    
+    // The cycle updates at 10 PM (22:00) MT
+    if (hour >= 22) {
+        const nextDay = new Date(now);
+        nextDay.setDate(nextDay.getDate() + 1);
+        return nextDay.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    }
+    return now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+};
+
 const parseResponse = (text: string): ParlayRecommendation[] => {
     try {
         const jsonString = cleanJsonText(text);
@@ -58,7 +76,7 @@ const parseResponse = (text: string): ParlayRecommendation[] => {
             }));
 
             return {
-                type: 'player_profile',
+                type: rec.type || 'player_profile',
                 id: rec.id || `profile-${Date.now()}-${index}`,
                 summary: rec.summary || "Quantitative ROI analysis complete.",
                 totalOdds: Number(rec.totalOdds) || 0,
@@ -76,6 +94,45 @@ const parseResponse = (text: string): ParlayRecommendation[] => {
     }
 };
 
+export const fetchTrendingPicks = async (): Promise<ParlayRecommendation[]> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const marketDate = getEffectiveMarketDate();
+
+    const prompt = `
+      OPERATE AS A HIGH-FREQUENCY BETTING ANALYST.
+      OBJECTIVE: Identify the top 3 trending player prop ROI edges for ${marketDate}.
+      
+      STEP 1: USE googleSearch to scan FanDuel, DraftKings, and PrizePicks for the most popular/trending NBA and NFL bets today.
+      STEP 2: Identify 3 high-EV (Positive Expected Value) props.
+      
+      OUTPUT FORMAT (STRICT JSON):
+      {
+        "recommendations": [
+          {
+            "type": "parlay",
+            "summary": "Trending High-EV Pick",
+            "legs": [
+              {
+                "playerName": "string", "team": "string", "opponent": "string", "statType": "string",
+                "line": number, "prediction": "Over", "bookOdds": number, "modelProb": number, "edge": number,
+                "rationale": "Must include rank, pace, and hit rate info."
+              }
+            ],
+            "expectedValue": number
+          }
+        ]
+      }
+    `;
+
+    const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: { tools: [{ googleSearch: {} }], temperature: 0.2 }
+    });
+
+    return parseResponse(response.text || "");
+};
+
 export const generateParlays = async (
   league: League,
   risk: RiskLevel,
@@ -83,15 +140,14 @@ export const generateParlays = async (
   statType: string = 'Any',
   advancedMetric: string = 'Standard'
 ): Promise<ParlayRecommendation[]> => {
-    const now = new Date();
-    const dateStamp = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    const marketDate = getEffectiveMarketDate();
     
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const modelId = "gemini-3-pro-preview";
 
     const prompt = `
       OPERATE AS A COMPREHENSIVE MULTI-MARKET SPORTS DATA AGGREGATOR.
-      OBJECTIVE: EXPOSE EVERY SINGLE BETTABLE PROP FOR THE REQUESTED PLAYER(S) for TODAY (${dateStamp}).
+      OBJECTIVE: EXPOSE EVERY SINGLE BETTABLE PROP FOR THE REQUESTED PLAYER(S) for ${marketDate}.
       
       STEP 1: USE googleSearch to perform an exhaustive scan for "${filters}":
       - For NBA: Retrieve EVERY line (Pts, Reb, Ast, 3PT, Stl, Blk, TO, PRA, P+R, P+A, R+A).
@@ -122,12 +178,6 @@ export const generateParlays = async (
                 "x10": number, "x20": number, "xSeason": number, "sigma": number, "expectedMins": number, "avgMins": number,
                 "expectedPace": number, "leaguePace": number, "oppAllowed": number, "leagueAllowed": number,
                 "rationale": "DEF: #22, PACE: +1.2%, HIT: 6/10 L10"
-              },
-              {
-                "playerName": "${filters}", "team": "string", "opponent": "string", "statType": "Assists",
-                "line": number, "prediction": "Over", "bookOdds": number,
-                "recentGames": [ { "date": "string", "opponent": "string", "value": number, "minutes": number, "hit": boolean } ],
-                "rationale": "DEF: #5, PACE: +1.2%, HIT: 8/10 L10"
               }
               ... repeat for EVERY found bettable market ...
             ]
