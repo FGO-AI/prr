@@ -7,9 +7,12 @@ import { PlayerProfileCard } from './components/PlayerProfileCard';
 import { LoadingScreen } from './components/LoadingScreen';
 import { LandingPage } from './components/LandingPage';
 import { SignUpPage } from './components/SignUpPage'; 
+import { LoginPage } from './components/LoginPage';
+import { AboutPage } from './components/AboutPage';
+import { AccessCodePage } from './components/AccessCodePage';
 import { BarChart3, ShieldAlert, Home, Zap, User, RefreshCw } from './components/Icons';
 
-type ViewState = 'landing' | 'signup' | 'app';
+type ViewState = 'landing' | 'signup' | 'login' | 'app' | 'about' | 'access';
 
 function App() {
   const [currentView, setCurrentView] = useState<ViewState>('landing');
@@ -83,6 +86,7 @@ function App() {
     return (
         <LandingPage 
             onEnter={() => setCurrentView('signup')} 
+            onAbout={() => setCurrentView('about')}
             hasActiveSession={recommendations.length > 0 || formData.filters !== ''}
             onResume={() => setCurrentView('app')} 
             trendingPicks={trendingPicks}
@@ -90,11 +94,35 @@ function App() {
     );
   }
 
+  if (currentView === 'access') {
+    return (
+        <AccessCodePage 
+            onComplete={() => setCurrentView('app')} 
+            onLogin={() => setCurrentView('login')} 
+        />
+    );
+  }
+
+  if (currentView === 'about') {
+    return <AboutPage onBack={() => setCurrentView('landing')} onStart={() => setCurrentView('signup')} />;
+  }
+
   if (currentView === 'signup') {
     return (
         <SignUpPage 
             onComplete={() => setCurrentView('app')} 
-            onLogin={() => setCurrentView('app')} 
+            onLogin={() => setCurrentView('login')} 
+            onGuest={() => setCurrentView('access')}
+        />
+    );
+  }
+
+  if (currentView === 'login') {
+    return (
+        <LoginPage 
+            onComplete={() => setCurrentView('app')} 
+            onSignUp={() => setCurrentView('signup')} 
+            onAccess={() => setCurrentView('access')}
         />
     );
   }
@@ -110,7 +138,7 @@ function App() {
               <Zap className="text-emerald-500" size={24} fill="currentColor" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-white tracking-tight">PRR <span className="text-gray-500 text-sm font-normal">| Terminal</span></h1>
+              <h1 className="text-lg font-bold text-white tracking-tight">F*&% Going On! <span className="text-gray-500 text-sm font-normal">| Terminal</span></h1>
               <div className="text-[10px] font-mono text-emerald-400 uppercase tracking-widest">LIVE GROUNDING ACTIVE</div>
             </div>
           </div>

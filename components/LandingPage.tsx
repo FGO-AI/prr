@@ -5,6 +5,7 @@ import { ParlayRecommendation } from '../types';
 
 interface LandingPageProps {
   onEnter: () => void;
+  onAbout?: () => void;
   onResume?: () => void;
   hasActiveSession?: boolean;
   trendingPicks?: ParlayRecommendation[];
@@ -116,7 +117,7 @@ const TopPicksCard: React.FC<{ picks: ParlayRecommendation[] }> = ({ picks }) =>
   );
 };
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onResume, hasActiveSession, trendingPicks = [] }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onAbout, onResume, hasActiveSession, trendingPicks = [] }) => {
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col font-sans selection:bg-emerald-500/30 overflow-hidden">
         
@@ -126,7 +127,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onResume, has
                   <div className="bg-emerald-500/10 p-1.5 rounded border border-emerald-500/20">
                       <BrainCircuit className="text-emerald-500" size={20} />
                   </div>
-                  <span className="text-lg font-bold text-white tracking-tight">PRR <span className="text-gray-600 text-sm font-normal">| Terminal</span></span>
+                  <span className="text-lg font-bold text-white tracking-tight">F*&% Going On! <span className="text-gray-600 text-sm font-normal">| Terminal</span></span>
               </div>
               <div className="flex items-center gap-4">
                  <div className="hidden md:flex items-center gap-2 text-xs text-gray-500 font-mono">
@@ -163,8 +164,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onResume, has
                     </div>
                     
                     <h1 className="text-5xl lg:text-7xl font-bold text-white tracking-tighter leading-none">
-                       Predictive <br />
-                       <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">Roster Risk.</span>
+                       F*&% <br />
+                       <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">Going On!</span>
                     </h1>
                     
                     <p className="text-gray-400 text-lg max-w-xl leading-relaxed">
@@ -182,8 +183,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onResume, has
                            </div>
                         </button>
 
-                        <button className="px-8 py-4 bg-gray-900 hover:bg-gray-800 border border-gray-700 text-gray-300 rounded-lg font-bold tracking-wide transition-all flex items-center gap-2">
-                           <Activity size={18} /> VIEW DOCS
+                        <button 
+                           onClick={onAbout}
+                           className="px-8 py-4 bg-gray-900 hover:bg-gray-800 border border-gray-700 text-gray-300 rounded-lg font-bold tracking-wide transition-all flex items-center gap-2"
+                        >
+                           <Activity size={18} /> HOW TO USE
                         </button>
                     </div>
 
@@ -245,7 +249,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onResume, has
         
         <footer className="border-t border-gray-900 bg-gray-950 py-8 relative z-10">
             <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
-                <p className="text-xs text-gray-600">© 2024 PRR Systems. All rights reserved. Data refreshed daily at 10:00 PM MT.</p>
+                <p className="text-xs text-gray-600">© 2024 F*&% Going On! Systems. All rights reserved. Data refreshed daily at 10:00 PM MT.</p>
                 <div className="flex items-center gap-4 text-xs text-gray-600">
                     <span className="hover:text-emerald-400 cursor-pointer transition-colors">Privacy Protocol</span>
                     <span className="hover:text-emerald-400 cursor-pointer transition-colors">Terms of Service</span>

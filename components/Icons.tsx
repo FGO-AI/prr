@@ -35,7 +35,8 @@ import {
   GitMerge,
   MapPin,
   Mail,
-  ArrowRight
+  ArrowRight,
+  Book
 } from 'lucide-react';
 
 export { 
@@ -72,5 +73,6 @@ export {
   GitMerge,
   MapPin,
   Mail,
-  ArrowRight
+  ArrowRight,
+  Book
 };

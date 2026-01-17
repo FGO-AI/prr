@@ -46,7 +46,7 @@ export const LoadingScreen: React.FC = () => {
           </div>
           
           <div className="text-center w-full">
-            <h3 className="text-lg font-bold text-white mb-2 tracking-widest uppercase">Prop ROI Engine V3.0</h3>
+            <h3 className="text-lg font-bold text-white mb-2 tracking-widest uppercase">Prop Engine V3.0</h3>
             <div className="bg-gray-950 p-4 rounded-lg border border-gray-800 min-h-[64px] flex items-center justify-center">
                 <p className="font-mono text-emerald-500 text-[10px] leading-relaxed animate-pulse">
                     {">"} {log}

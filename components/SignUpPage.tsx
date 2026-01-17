@@ -1,12 +1,14 @@
+
 import React, { useState } from 'react';
-import { User, Mail, Lock, ArrowRight, ShieldAlert, CheckCircle2, Zap } from './Icons';
+import { User, Mail, Lock, ArrowRight, ShieldAlert, CheckCircle2, Zap, Shield } from './Icons';
 
 interface SignUpPageProps {
   onComplete: () => void;
-  onLogin: () => void; // For "Already have an account?" logic (can just go to app for MVP)
+  onLogin: () => void;
+  onGuest: () => void;
 }
 
-export const SignUpPage: React.FC<SignUpPageProps> = ({ onComplete, onLogin }) => {
+export const SignUpPage: React.FC<SignUpPageProps> = ({ onComplete, onLogin, onGuest }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -30,13 +32,15 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onComplete, onLogin }) =
 
     // Basic Validation
     if (!formData.name || !formData.email || !formData.password) {
-      setError("All fields are required to initialize account.");
+      setError("Credentials required for account creation.");
       return;
     }
+
     if (formData.password !== formData.confirmPassword) {
       setError("Encryption keys (passwords) do not match.");
       return;
     }
+
     if (formData.password.length < 8) {
         setError("Password must be at least 8 characters for security.");
         return;
@@ -71,8 +75,8 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onComplete, onLogin }) =
                 <div className="absolute inset-0 bg-emerald-500/20 blur-xl opacity-0 group-hover:opacity-100 transition-opacity rounded-full"></div>
                 <User className="text-emerald-500 relative z-10" size={32} />
             </div>
-            <h1 className="text-3xl font-bold text-white tracking-tight mb-2">Initialize Access</h1>
-            <p className="text-gray-500 text-sm font-mono">Create your PRR Terminal identity to begin.</p>
+            <h1 className="text-3xl font-bold text-white tracking-tight mb-2 uppercase tracking-tighter">Initialize Account</h1>
+            <p className="text-gray-500 text-xs font-mono uppercase tracking-widest">Operator Registration Protocol</p>
         </div>
 
         {/* Form Card */}
@@ -83,14 +87,14 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onComplete, onLogin }) =
             <form onSubmit={handleSubmit} className="space-y-5">
                 
                 {error && (
-                    <div className="bg-rose-950/30 border border-rose-900/50 text-rose-300 px-4 py-3 rounded-lg text-xs flex items-center gap-2 animate-pulse">
+                    <div className="bg-rose-950/30 border border-rose-900/50 text-rose-300 px-4 py-3 rounded-lg text-[10px] font-mono flex items-center gap-2 animate-pulse">
                         <ShieldAlert size={14} />
                         {error}
                     </div>
                 )}
 
                 <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Operator Name</label>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Operator Alias</label>
                     <div className="relative group">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <User size={16} className="text-gray-600 group-focus-within:text-emerald-500 transition-colors" />
@@ -101,13 +105,13 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onComplete, onLogin }) =
                             value={formData.name}
                             onChange={handleChange}
                             placeholder="e.g. JohnDoe_01"
-                            className="w-full bg-gray-950 border border-gray-800 text-white rounded-lg py-3 pl-10 pr-4 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all placeholder-gray-700 text-sm"
+                            className="w-full bg-gray-950 border border-gray-800 text-white rounded-lg py-3 pl-10 pr-4 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder-gray-800 text-sm font-mono"
                         />
                     </div>
                 </div>
 
                 <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Email Address</label>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Email Connection</label>
                     <div className="relative group">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <Mail size={16} className="text-gray-600 group-focus-within:text-emerald-500 transition-colors" />
@@ -117,15 +121,15 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onComplete, onLogin }) =
                             name="email"
                             value={formData.email}
                             onChange={handleChange}
-                            placeholder="name@example.com"
-                            className="w-full bg-gray-950 border border-gray-800 text-white rounded-lg py-3 pl-10 pr-4 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all placeholder-gray-700 text-sm"
+                            placeholder="name@terminal.io"
+                            className="w-full bg-gray-950 border border-gray-800 text-white rounded-lg py-3 pl-10 pr-4 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder-gray-800 text-sm font-mono"
                         />
                     </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Password</label>
+                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Security Key</label>
                         <div className="relative group">
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                 <Lock size={16} className="text-gray-600 group-focus-within:text-emerald-500 transition-colors" />
@@ -136,12 +140,12 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onComplete, onLogin }) =
                                 value={formData.password}
                                 onChange={handleChange}
                                 placeholder="••••••••"
-                                className="w-full bg-gray-950 border border-gray-800 text-white rounded-lg py-3 pl-10 pr-4 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all placeholder-gray-700 text-sm"
+                                className="w-full bg-gray-950 border border-gray-800 text-white rounded-lg py-3 pl-10 pr-4 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder-gray-800 text-sm font-mono"
                             />
                         </div>
                     </div>
                     <div className="space-y-1">
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Confirm</label>
+                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Verify</label>
                         <div className="relative group">
                             <input
                                 type="password"
@@ -149,7 +153,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onComplete, onLogin }) =
                                 value={formData.confirmPassword}
                                 onChange={handleChange}
                                 placeholder="••••••••"
-                                className="w-full bg-gray-950 border border-gray-800 text-white rounded-lg py-3 px-4 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all placeholder-gray-700 text-sm"
+                                className="w-full bg-gray-950 border border-gray-800 text-white rounded-lg py-3 px-4 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder-gray-800 text-sm font-mono"
                             />
                         </div>
                     </div>
@@ -159,49 +163,53 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onComplete, onLogin }) =
                     type="submit"
                     disabled={isLoading}
                     className={`
-                        w-full flex items-center justify-center gap-2 py-3.5 rounded-lg font-bold tracking-wide transition-all mt-4
+                        w-full flex items-center justify-center gap-2 py-4 rounded-lg font-bold tracking-widest transition-all mt-4 text-xs uppercase
                         ${isLoading 
-                            ? 'bg-gray-800 text-gray-500 cursor-not-allowed' 
-                            : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40 hover:-translate-y-0.5'
+                            ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700' 
+                            : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-xl shadow-emerald-500/20 hover:shadow-emerald-500/40 hover:-translate-y-0.5'
                         }
                     `}
                 >
                     {isLoading ? (
                         <>
                            <div className="w-4 h-4 border-2 border-gray-500 border-t-white rounded-full animate-spin"></div>
-                           ESTABLISHING SECURE CONNECTION...
+                           Establishing...
                         </>
                     ) : (
                         <>
-                           CREATE ACCOUNT <ArrowRight size={16} />
+                           Register Account <ArrowRight size={16} />
                         </>
                     )}
                 </button>
             </form>
 
-            <div className="mt-6 pt-6 border-t border-gray-800/50 text-center">
-                <p className="text-gray-500 text-xs">
-                    Already have access?{' '}
-                    <button onClick={onLogin} className="text-emerald-400 hover:text-emerald-300 font-bold hover:underline">
+            {/* Bottom Actions Area */}
+            <div className="mt-8 pt-6 border-t border-gray-800/50 flex flex-col gap-4">
+                <button 
+                  onClick={onGuest}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border border-blue-500/30 bg-blue-500/5 text-blue-400 font-bold text-[10px] uppercase tracking-[0.2em] hover:bg-blue-500/10 hover:border-blue-500/50 transition-all"
+                >
+                   <Shield size={14} /> Guest Access (Access Code)
+                </button>
+                
+                <p className="text-gray-600 text-[10px] uppercase tracking-widest font-mono text-center">
+                    Already an operator?{' '}
+                    <button onClick={onLogin} className="text-emerald-400 hover:text-emerald-300 font-bold transition-colors underline underline-offset-4 decoration-emerald-500/30">
                         Log in here
                     </button>
                 </p>
             </div>
         </div>
 
-        {/* Trust Badges */}
-        <div className="mt-8 flex justify-center gap-6 text-gray-600 grayscale opacity-70 hover:grayscale-0 hover:opacity-100 transition-all duration-500">
+        {/* Security Footnote */}
+        <div className="mt-8 flex justify-center gap-6 text-gray-800 opacity-50">
              <div className="flex items-center gap-1.5">
                  <ShieldAlert size={14} />
-                 <span className="text-[10px] uppercase font-bold tracking-widest">SSL Encrypted</span>
+                 <span className="text-[9px] uppercase font-bold tracking-widest">SSL Secure</span>
              </div>
              <div className="flex items-center gap-1.5">
                  <CheckCircle2 size={14} />
-                 <span className="text-[10px] uppercase font-bold tracking-widest">Verified Models</span>
-             </div>
-             <div className="flex items-center gap-1.5">
-                 <Zap size={14} />
-                 <span className="text-[10px] uppercase font-bold tracking-widest">Live Data</span>
+                 <span className="text-[9px] uppercase font-bold tracking-widest">Encrypted</span>
              </div>
         </div>
 
