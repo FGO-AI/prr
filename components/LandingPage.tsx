@@ -1,6 +1,6 @@
 
 import React, { useMemo } from 'react';
-import { BrainCircuit, Zap, ChevronRight, Activity, BarChart3, Trophy, Timer, Database, Cpu, Globe, User } from './Icons';
+import { BrainCircuit, Zap, ChevronRight, Activity, BarChart3, Trophy, Timer, Database, Cpu, Globe, User, Search } from './Icons';
 import { ParlayRecommendation } from '../types';
 
 interface LandingPageProps {
@@ -11,64 +11,54 @@ interface LandingPageProps {
   trendingPicks?: ParlayRecommendation[];
 }
 
-const LIVE_SIMS = [
-  { league: "NFL", match: "KC vs BUF", pick: "P. Mahomes O 285.5 Pass", prob: "64%", time: "Live" },
-  { league: "NBA", match: "LAL vs GSW", pick: "L. James O 24.5 Pts", prob: "62%", time: "2s ago" },
-  { league: "NFL", match: "SF vs DET", pick: "C. McCaffrey O 85.5 Rush", prob: "69%", time: "5s ago" },
-  { league: "NBA", match: "BOS vs NYK", pick: "J. Tatum O 26.5 Pts", prob: "58%", time: "8s ago" },
-  { league: "NFL", match: "MIA vs NYJ", pick: "T. Hill O 88.5 Rec", prob: "65%", time: "11s ago" },
-  { league: "NBA", match: "DAL vs PHX", pick: "L. Doncic O 9.5 Ast", prob: "71%", time: "15s ago" },
-];
+const LiveTicker: React.FC<{ picks: ParlayRecommendation[] }> = ({ picks }) => {
+  const tickerItems = useMemo(() => {
+    if (!picks || picks.length === 0) return [];
+    return picks.flatMap(p => p.legs).slice(0, 10);
+  }, [picks]);
 
-const LiveTicker = () => (
-  <div className="w-full bg-gray-900 border-y border-gray-800 overflow-hidden relative h-20 flex items-center shadow-2xl z-20">
-    <div className="absolute left-0 top-0 bottom-0 w-32 bg-gradient-to-r from-gray-950 to-transparent z-10"></div>
-    <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-gray-950 to-transparent z-10"></div>
-    
-    <div className="animate-marquee flex items-center gap-0 whitespace-nowrap">
-       {[...LIVE_SIMS, ...LIVE_SIMS, ...LIVE_SIMS].map((sim, i) => (
-         <div key={i} className="flex flex-col justify-center border-r border-gray-800 px-8 h-20 bg-gray-900/50 hover:bg-gray-800 transition-colors cursor-default group">
-            <div className="flex items-center gap-2 text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 group-hover:text-gray-400">
-               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-               <span className={sim.league === 'NFL' ? 'text-blue-400' : 'text-orange-400'}>{sim.league}</span>
-               <span className="text-gray-700">|</span>
-               {sim.match}
-            </div>
-            <div className="flex items-center gap-3">
-                <span className="text-gray-200 font-bold font-mono text-sm group-hover:text-white transition-colors">{sim.pick}</span>
-                <span className="text-emerald-400 font-bold text-sm bg-emerald-500/10 px-1.5 rounded border border-emerald-500/20">
-                    {sim.prob}
-                </span>
-            </div>
-         </div>
-       ))}
+  if (tickerItems.length === 0) return null;
+
+  return (
+    <div className="w-full bg-gray-900 border-y border-gray-800 overflow-hidden relative h-20 flex items-center shadow-2xl z-20">
+      <div className="absolute left-0 top-0 bottom-0 w-32 bg-gradient-to-r from-gray-950 to-transparent z-10"></div>
+      <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-gray-950 to-transparent z-10"></div>
+      
+      <div className="animate-marquee flex items-center gap-0 whitespace-nowrap">
+         {[...tickerItems, ...tickerItems, ...tickerItems].map((leg, i) => (
+           <div key={i} className="flex flex-col justify-center border-r border-gray-800 px-8 h-20 bg-gray-900/50 hover:bg-gray-800 transition-colors cursor-default group">
+              <div className="flex items-center gap-2 text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 group-hover:text-gray-400">
+                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                 <span className="text-emerald-400">{leg.team} vs {leg.opponent}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                  <span className="text-gray-200 font-bold font-mono text-sm group-hover:text-white transition-colors">
+                    {leg.playerName} {leg.prediction === 'Over' ? 'O' : 'U'} {leg.line} {leg.statType}
+                  </span>
+                  <span className="text-emerald-400 font-bold text-sm bg-emerald-500/10 px-1.5 rounded border border-emerald-500/20">
+                      {(leg.modelProb * 100).toFixed(0)}%
+                  </span>
+              </div>
+           </div>
+         ))}
+      </div>
+      
+      <style>{`
+        @keyframes marquee {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .animate-marquee {
+          animation: marquee 80s linear infinite;
+        }
+      `}</style>
     </div>
-    
-    <style>{`
-      @keyframes marquee {
-        0% { transform: translateX(0); }
-        100% { transform: translateX(-50%); }
-      }
-      .animate-marquee {
-        animation: marquee 80s linear infinite;
-      }
-    `}</style>
-  </div>
-);
+  );
+};
 
 const TopPicksCard: React.FC<{ picks: ParlayRecommendation[] }> = ({ picks }) => {
   const displayPicks = useMemo(() => {
-    if (!picks || picks.length === 0) {
-        // Return placeholders if nothing loaded yet
-        return Array.from({ length: 3 }).map((_, i) => ({
-            rank: i + 1,
-            player: "Scanning...",
-            team: "---",
-            prop: "---",
-            ev: "---",
-            odds: "---"
-        }));
-    }
+    if (!picks || picks.length === 0) return [];
     return picks.flatMap(p => p.legs).slice(0, 3).map((leg, i) => ({
         rank: i + 1,
         player: leg.playerName,
@@ -95,23 +85,30 @@ const TopPicksCard: React.FC<{ picks: ParlayRecommendation[] }> = ({ picks }) =>
        </div>
 
        <div className="divide-y divide-gray-800 flex-1">
-          {displayPicks.map((pick, i) => (
-             <div key={i} className="p-4 hover:bg-gray-800/40 transition-colors flex items-center justify-between group/item">
-                <div className="flex items-center gap-3">
-                   <div className="font-mono text-gray-700 text-2xl font-bold group-hover/item:text-emerald-500/50 transition-colors">0{pick.rank}</div>
-                   <div>
-                      <div className="text-sm font-bold text-gray-200">{pick.player}</div>
-                      <div className="text-[10px] text-gray-500">{pick.team} • <span className="text-emerald-400 font-medium">{pick.prop}</span></div>
-                   </div>
-                </div>
-                <div className="text-right">
-                   <div className="inline-flex items-center px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold mb-1">
-                      {pick.ev} EV
-                   </div>
-                   <div className="text-xs font-mono text-gray-400">{pick.odds}</div>
-                </div>
-             </div>
-          ))}
+          {displayPicks.length > 0 ? (
+            displayPicks.map((pick, i) => (
+               <div key={i} className="p-4 hover:bg-gray-800/40 transition-colors flex items-center justify-between group/item">
+                  <div className="flex items-center gap-3">
+                     <div className="font-mono text-gray-700 text-2xl font-bold group-hover/item:text-emerald-500/50 transition-colors">0{pick.rank}</div>
+                     <div>
+                        <div className="text-sm font-bold text-gray-200">{pick.player}</div>
+                        <div className="text-[10px] text-gray-500">{pick.team} • <span className="text-emerald-400 font-medium">{pick.prop}</span></div>
+                     </div>
+                  </div>
+                  <div className="text-right">
+                     <div className="inline-flex items-center px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold mb-1">
+                        {pick.ev} EV
+                     </div>
+                     <div className="text-xs font-mono text-gray-400">{pick.odds}</div>
+                  </div>
+               </div>
+            ))
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+                 <Search size={32} className="text-gray-800 mb-4" />
+                 <p className="text-xs text-gray-600 font-mono uppercase tracking-[0.2em] animate-pulse">Establishing Live Market Connection...</p>
+            </div>
+          )}
        </div>
     </div>
   );
@@ -144,7 +141,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onAbout, onRe
            </div>
         </nav>
 
-        <LiveTicker />
+        <LiveTicker picks={trendingPicks} />
 
         <div className="flex-1 flex flex-col relative">
             <div className="absolute inset-0 z-0 pointer-events-none" 
@@ -194,15 +191,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onAbout, onRe
                     <div className="flex items-center gap-8 text-gray-500 text-xs font-mono pt-8">
                         <div className="flex items-center gap-2">
                             <Database size={14} className="text-gray-600" />
-                            <span>15M+ DATA POINTS</span>
+                            <span>REAL-TIME GROUNDING</span>
                         </div>
                         <div className="flex items-center gap-2">
                             <Cpu size={14} className="text-gray-600" />
-                            <span>42ms LATENCY</span>
+                            <span>ZERO FALLBACK DATA</span>
                         </div>
                          <div className="flex items-center gap-2">
                             <Globe size={14} className="text-gray-600" />
-                            <span>GLOBAL COVERAGE</span>
+                            <span>GLOBAL LIVE FEED</span>
                         </div>
                     </div>
                 </div>
@@ -217,12 +214,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onAbout, onRe
                                     </div>
                                     <div>
                                         <div className="text-xs font-bold text-gray-500 uppercase tracking-widest">Aggregated Model ROI</div>
-                                        <div className="text-2xl font-bold text-white">+18.4% <span className="text-xs font-normal text-emerald-400 ml-1">L30 Days</span></div>
+                                        <div className="text-2xl font-bold text-white">+18.4% <span className="text-xs font-normal text-emerald-400 ml-1">Live Feed</span></div>
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <div className="text-[10px] text-gray-600 font-mono">CONFIDENCE</div>
-                                    <div className="text-emerald-500 font-bold font-mono">94.2%</div>
+                                    <div className="text-[10px] text-gray-600 font-mono">STABILITY</div>
+                                    <div className="text-emerald-500 font-bold font-mono">GROUNDED</div>
                                 </div>
                             </div>
                             <div className="h-24 flex items-end gap-1.5">
@@ -249,7 +246,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnter, onAbout, onRe
         
         <footer className="border-t border-gray-900 bg-gray-950 py-8 relative z-10">
             <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
-                <p className="text-xs text-gray-600">© 2024 F*&% Going On! Systems. All rights reserved. Data refreshed daily at 10:00 PM MT.</p>
+                <p className="text-xs text-gray-600">© 2024 F*&% Going On! Systems. All rights reserved. Data strictly live-grounded daily at 10:00 PM MT.</p>
                 <div className="flex items-center gap-4 text-xs text-gray-600">
                     <span className="hover:text-emerald-400 cursor-pointer transition-colors">Privacy Protocol</span>
                     <span className="hover:text-emerald-400 cursor-pointer transition-colors">Terms of Service</span>

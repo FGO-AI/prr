@@ -27,6 +27,8 @@ export interface BetLeg {
   team: string;
   opponent: string;
   statType: string;
+  category?: 'Primary' | 'Alternate' | 'Combo' | 'Defense';
+  isAltLine?: boolean;
   line: number;
   prediction: 'Over' | 'Under';
   bookOdds: number;
@@ -52,6 +54,14 @@ export interface BetLeg {
   leagueAllowed?: number;
   muFinal?: number;
   zScore?: number;
+  
+  // SGP Correlations
+  correlations?: {
+    playerName: string;
+    statType: string;
+    coefficient: number;
+    rationale: string;
+  }[];
 }
 
 export interface ParlayRecommendation {
