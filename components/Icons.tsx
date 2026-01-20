@@ -1,6 +1,6 @@
 
 import React from 'react';
-// Added TrendingDown and List icons to fix the 'no exported member' errors
+// Added missing Plus and Trash2 icons to fix the 'no exported member' errors in ParlayCard.tsx
 import { 
   Activity, 
   TrendingUp, 
@@ -36,7 +36,9 @@ import {
   MapPin,
   Mail,
   ArrowRight,
-  Book
+  Book,
+  Plus,
+  Trash2
 } from 'lucide-react';
 
 export { 
@@ -74,5 +76,7 @@ export {
   MapPin,
   Mail,
   ArrowRight,
-  Book
+  Book,
+  Plus,
+  Trash2
 };
