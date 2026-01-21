@@ -1,6 +1,5 @@
 
 import React from 'react';
-// Added missing Plus and Trash2 icons to fix the 'no exported member' errors in ParlayCard.tsx
 import { 
   Activity, 
   TrendingUp, 
@@ -38,7 +37,9 @@ import {
   ArrowRight,
   Book,
   Plus,
-  Trash2
+  Trash2,
+  Target,
+  Settings2
 } from 'lucide-react';
 
 export { 
@@ -78,5 +79,7 @@ export {
   ArrowRight,
   Book,
   Plus,
-  Trash2
+  Trash2,
+  Target,
+  Settings2
 };
