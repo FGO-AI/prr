@@ -24,6 +24,7 @@ function App() {
   const [currentView, setCurrentView] = useState<ViewState>('landing');
   const [activeTab, setActiveTab] = useState<AppTab>('search');
   const [historyLeague, setHistoryLeague] = useState<League>(League.NBA);
+  const [constructorLeague, setConstructorLeague] = useState<League>(League.NBA);
   const [isLoading, setIsLoading] = useState(false);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   
@@ -55,13 +56,15 @@ function App() {
   const builderStats = useMemo(() => {
     if (builderLegs.length === 0) return { prob: 0, odds: 0, edge: 0, payout: 0 };
     
-    // Joint probability calculation
+    // Joint probability calculation: Multiply individual win probabilities
     const jointProb = builderLegs.reduce((p, leg) => {
       const m = calculateEngineMetrics(leg);
-      return p * m.pModel;
+      // Ensure we don't multiply by NaN or 0 if possible
+      const prob = isNaN(m.pModel) ? 0.5 : m.pModel;
+      return p * prob;
     }, 1);
 
-    // Odds accumulation
+    // Odds accumulation: Product of decimal odds
     const totalDecimal = builderLegs.reduce((o, leg) => {
       const odds = leg.bookOdds;
       const decimal = odds > 0 ? (odds / 100) + 1 : (100 / Math.abs(odds)) + 1;
@@ -72,7 +75,7 @@ function App() {
       ? Math.round((totalDecimal - 1) * 100) 
       : Math.round(-100 / (totalDecimal - 1));
 
-    // Expected Value (EV)
+    // Expected Value (EV): (JointProb * TotalPayout) - 1
     const ev = (jointProb * totalDecimal) - 1;
 
     return {
@@ -138,7 +141,7 @@ function App() {
     if (!builderSearch) return;
     setIsBuilderSearching(true);
     try {
-      const results = await generateParlays(formData.league, formData.riskLevel, builderSearch);
+      const results = await generateParlays(constructorLeague, formData.riskLevel, builderSearch);
       const allLegs = results.flatMap(r => r.legs);
       setBuilderResults(allLegs);
     } catch (err) {
@@ -253,205 +256,234 @@ function App() {
 
         {/* Module 2: The Master Constructor */}
         {activeTab === 'parlays' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fadeIn">
-            
-            {/* Left: Target Discovery (Discovery Pane) */}
-            <div className="lg:col-span-7 space-y-6">
-              <div className="bg-gray-900 border border-gray-800 p-6 rounded-2xl shadow-xl">
-                 <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xs font-bold text-emerald-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                        <Search size={14} /> Discovery Engine
-                    </h2>
-                    <span className="text-[10px] text-gray-600 font-mono uppercase">Live Market Feed: {formData.league}</span>
-                 </div>
-                 <div className="flex gap-2">
-                    <div className="relative flex-1">
-                        <input 
-                            type="text" 
-                            placeholder="Target Player (e.g. Anthony Davis)..."
-                            className="w-full bg-gray-950 border border-gray-800 rounded-xl px-10 py-3.5 text-sm font-mono focus:border-emerald-500 outline-none transition-colors"
-                            value={builderSearch}
-                            onChange={(e) => setBuilderSearch(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleBuilderSearch()}
-                        />
-                        <Search className="absolute left-3.5 top-4 text-gray-600" size={16} />
-                    </div>
-                    <button 
-                      onClick={handleBuilderSearch}
-                      disabled={isBuilderSearching}
-                      className="bg-emerald-500 hover:bg-emerald-600 text-gray-950 px-6 rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center gap-2"
-                    >
-                      {isBuilderSearching ? <RefreshCw className="animate-spin" size={16} /> : <Target size={16} />} 
-                      {isBuilderSearching ? 'SCANNING' : 'SCAN'}
-                    </button>
-                 </div>
-              </div>
-
-              <div className="space-y-3">
-                 {builderResults.length > 0 ? (
-                   builderResults.map((leg, idx) => {
-                     const m = calculateEngineMetrics(leg);
-                     const inParlay = builderLegs.some(l => l.playerName === leg.playerName && l.statType === leg.statType);
-                     return (
-                       <div key={idx} className="bg-gray-900/60 border border-gray-800 p-4 rounded-xl flex items-center justify-between group hover:border-emerald-500/40 transition-all backdrop-blur-sm">
-                          <div className="flex items-center gap-4">
-                             <div className="w-12 h-12 rounded-lg bg-gray-950 border border-gray-800 flex items-center justify-center relative overflow-hidden group-hover:border-emerald-500/30 transition-colors">
-                                <User size={24} className="text-gray-700 relative z-10" />
-                                <div className="absolute inset-0 bg-emerald-500/5 group-hover:bg-emerald-500/10"></div>
-                             </div>
-                             <div>
-                                <div className="text-sm font-bold text-white leading-tight">{leg.playerName} <span className="text-gray-500 font-normal ml-1">({leg.team})</span></div>
-                                <div className="text-[10px] text-gray-500 font-mono uppercase tracking-widest mt-1">
-                                    <span className="text-emerald-500/80 font-bold">{leg.prediction === 'Over' ? 'O' : 'U'} {leg.line}</span> {leg.statType} @ {leg.bookOdds > 0 ? '+' : ''}{leg.bookOdds}
-                                </div>
-                             </div>
-                          </div>
-                          <div className="flex items-center gap-6">
-                             <div className="text-right hidden sm:block">
-                                <div className="text-[10px] text-emerald-400 font-bold font-mono">{(m.pModel * 100).toFixed(0)}% WIN</div>
-                                <div className="text-[8px] text-gray-600 uppercase font-mono tracking-tighter">Engine Projection</div>
-                             </div>
-                             <button 
-                                onClick={() => inParlay 
-                                    ? setBuilderLegs(prev => prev.filter(l => !(l.playerName === leg.playerName && l.statType === leg.statType))) 
-                                    : setBuilderLegs(prev => [...prev, leg])
-                                }
-                                className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${
-                                    inParlay 
-                                    ? 'bg-rose-500/20 text-rose-500 border border-rose-500/30 hover:bg-rose-500/30' 
-                                    : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500 hover:text-gray-950'
-                                }`}
-                             >
-                                {inParlay ? <X size={20} /> : <Plus size={20} />}
-                             </button>
-                          </div>
-                       </div>
-                     );
-                   })
-                 ) : (
-                   <div className="text-center py-24 border border-dashed border-gray-800 rounded-2xl bg-gray-900/10">
-                      <Cpu size={40} className="text-gray-800 mx-auto mb-4" />
-                      <div className="text-gray-600 text-xs font-mono uppercase tracking-[0.3em] italic">Awaiting target discovery protocol...</div>
-                   </div>
-                 )}
-              </div>
+          <div className="animate-fadeIn space-y-6">
+            {/* League Selection & Season Status */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+               <div className="flex items-center gap-2 p-1 bg-gray-900 rounded-lg border border-gray-800 w-fit">
+                  {Object.values(League).map((l) => (
+                      <button 
+                        key={l}
+                        onClick={() => {
+                          setConstructorLeague(l);
+                          setBuilderResults([]); // Clear results on league switch
+                        }}
+                        className={`px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest rounded-md transition-all ${constructorLeague === l ? 'bg-emerald-500 text-gray-950 shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}
+                      >
+                        {l}
+                      </button>
+                  ))}
+               </div>
+               
+               {isOutOfSeason(constructorLeague) && (
+                  <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg px-4 py-2 flex items-center gap-3 animate-pulse">
+                     <Clock size={16} className="text-amber-500" />
+                     <p className="text-[10px] font-mono text-amber-500 uppercase tracking-widest">
+                       Season Performance Archive: Sorry, gotta wait till next season for {constructorLeague}!
+                     </p>
+                  </div>
+               )}
             </div>
 
-            {/* Right: Quant Configuration Slip (Configuration Pane) */}
-            <div className="lg:col-span-5 space-y-6">
-               <div className="bg-gray-900 border border-emerald-500/30 rounded-2xl overflow-hidden shadow-2xl sticky top-40 transition-all">
-                  <div className="p-4 bg-emerald-500/10 border-b border-emerald-500/30 flex justify-between items-center">
-                     <h2 className="text-xs font-bold text-emerald-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                        <BrainCircuit size={16} /> Quant Config Slip
-                     </h2>
-                     <button 
-                        onClick={() => setBuilderLegs([])} 
-                        className="text-[10px] font-bold text-gray-600 hover:text-rose-400 transition-colors uppercase tracking-widest"
-                     >
-                        Reset All
-                     </button>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              
+              {/* Left: Target Discovery (Discovery Pane) */}
+              <div className="lg:col-span-7 space-y-6">
+                <div className="bg-gray-900 border border-gray-800 p-6 rounded-2xl shadow-xl">
+                  <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-xs font-bold text-emerald-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                          <Search size={14} /> Discovery Engine
+                      </h2>
+                      <span className="text-[10px] text-gray-600 font-mono uppercase">Live Market Feed: {constructorLeague}</span>
                   </div>
+                  <div className="flex gap-2">
+                      <div className="relative flex-1">
+                          <input 
+                              type="text" 
+                              placeholder={`Target ${constructorLeague} Player...`}
+                              className="w-full bg-gray-950 border border-gray-800 rounded-xl px-10 py-3.5 text-sm font-mono focus:border-emerald-500 outline-none transition-colors"
+                              value={builderSearch}
+                              onChange={(e) => setBuilderSearch(e.target.value)}
+                              onKeyDown={(e) => e.key === 'Enter' && handleBuilderSearch()}
+                          />
+                          <Search className="absolute left-3.5 top-4 text-gray-600" size={16} />
+                      </div>
+                      <button 
+                        onClick={handleBuilderSearch}
+                        disabled={isBuilderSearching}
+                        className="bg-emerald-500 hover:bg-emerald-600 text-gray-950 px-6 rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center gap-2"
+                      >
+                        {isBuilderSearching ? <RefreshCw className="animate-spin" size={16} /> : <Target size={16} />} 
+                        {isBuilderSearching ? 'SCANNING' : 'SCAN'}
+                      </button>
+                  </div>
+                </div>
 
-                  <div className="p-6 space-y-6">
-                     {builderLegs.length === 0 ? (
-                        <div className="text-center py-16">
-                           <GitMerge size={48} className="text-gray-800 mx-auto mb-4" />
-                           <p className="text-xs text-gray-600 font-mono uppercase tracking-[0.2em] leading-relaxed">Add legs from the discovery engine <br />to initiate Bayesian calculation</p>
+                <div className="space-y-3">
+                  {builderResults.length > 0 ? (
+                    builderResults.map((leg, idx) => {
+                      const m = calculateEngineMetrics(leg);
+                      const inParlay = builderLegs.some(l => l.playerName === leg.playerName && l.statType === leg.statType);
+                      return (
+                        <div key={idx} className="bg-gray-900/60 border border-gray-800 p-4 rounded-xl flex items-center justify-between group hover:border-emerald-500/40 transition-all backdrop-blur-sm">
+                            <div className="flex items-center gap-4">
+                              <div className="w-12 h-12 rounded-lg bg-gray-950 border border-gray-800 flex items-center justify-center relative overflow-hidden group-hover:border-emerald-500/30 transition-colors">
+                                  <User size={24} className="text-gray-700 relative z-10" />
+                                  <div className="absolute inset-0 bg-emerald-500/5 group-hover:bg-emerald-500/10"></div>
+                              </div>
+                              <div>
+                                  <div className="text-sm font-bold text-white leading-tight">{leg.playerName} <span className="text-gray-500 font-normal ml-1">({leg.team})</span></div>
+                                  <div className="text-[10px] text-gray-500 font-mono uppercase tracking-widest mt-1">
+                                      <span className="text-emerald-400 font-bold">{leg.prediction === 'Over' ? 'O' : 'U'} {leg.line}</span> {leg.statType} @ {leg.bookOdds > 0 ? '+' : ''}{leg.bookOdds}
+                                  </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-6">
+                              <div className="text-right hidden sm:block">
+                                  <div className="text-[10px] text-emerald-400 font-bold font-mono">{(m.pModel * 100).toFixed(0)}% WIN</div>
+                                  <div className="text-[8px] text-gray-600 uppercase font-mono tracking-tighter">Engine Projection</div>
+                              </div>
+                              <button 
+                                  onClick={() => inParlay 
+                                      ? setBuilderLegs(prev => prev.filter(l => !(l.playerName === leg.playerName && l.statType === leg.statType))) 
+                                      : setBuilderLegs(prev => [...prev, leg])
+                                  }
+                                  className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${
+                                      inParlay 
+                                      ? 'bg-rose-500/20 text-rose-500 border border-rose-500/30 hover:bg-rose-500/30' 
+                                      : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500 hover:text-gray-950'
+                                  }`}
+                              >
+                                  {inParlay ? <X size={20} /> : <Plus size={20} />}
+                              </button>
+                            </div>
                         </div>
-                     ) : (
-                        <div className="space-y-6 animate-fadeIn">
-                           <div className="space-y-4">
-                              {builderLegs.map((leg, i) => (
-                                <div key={i} className="p-4 bg-gray-950/50 rounded-xl border border-gray-800 group relative">
-                                   <div className="flex justify-between items-start mb-3">
-                                      <div>
-                                         <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-1">{leg.playerName}</div>
-                                         <div className="text-[9px] text-gray-500 font-mono">{leg.statType}</div>
+                      );
+                    })
+                  ) : (
+                    <div className="text-center py-24 border border-dashed border-gray-800 rounded-2xl bg-gray-900/10">
+                        <Cpu size={40} className="text-gray-800 mx-auto mb-4" />
+                        <div className="text-gray-600 text-xs font-mono uppercase tracking-[0.3em] italic">Awaiting target discovery protocol for {constructorLeague}...</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Right: Quant Configuration Slip (Configuration Pane) */}
+              <div className="lg:col-span-5 space-y-6">
+                <div className="bg-gray-900 border border-emerald-500/30 rounded-2xl overflow-hidden shadow-2xl sticky top-40 transition-all">
+                    <div className="p-4 bg-emerald-500/10 border-b border-emerald-500/30 flex justify-between items-center">
+                      <h2 className="text-xs font-bold text-emerald-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                          <BrainCircuit size={16} /> Quant Config Slip
+                      </h2>
+                      <button 
+                          onClick={() => setBuilderLegs([])} 
+                          className="text-[10px] font-bold text-gray-600 hover:text-rose-400 transition-colors uppercase tracking-widest"
+                      >
+                          Reset All
+                      </button>
+                    </div>
+
+                    <div className="p-6 space-y-6">
+                      {builderLegs.length === 0 ? (
+                          <div className="text-center py-16">
+                            <GitMerge size={48} className="text-gray-800 mx-auto mb-4" />
+                            <p className="text-xs text-gray-600 font-mono uppercase tracking-[0.2em] leading-relaxed">Add legs from the discovery engine <br />to initiate Bayesian calculation</p>
+                          </div>
+                      ) : (
+                          <div className="space-y-6 animate-fadeIn">
+                            <div className="space-y-4">
+                                {builderLegs.map((leg, i) => (
+                                  <div key={i} className="p-4 bg-gray-950/50 rounded-xl border border-gray-800 group relative">
+                                    <div className="flex justify-between items-start mb-3">
+                                        <div>
+                                          <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-1">{leg.playerName}</div>
+                                          <div className="text-[9px] text-gray-500 font-mono">{leg.statType}</div>
+                                        </div>
+                                        <button 
+                                          onClick={() => setBuilderLegs(prev => prev.filter((_, idx) => idx !== i))} 
+                                          className="text-gray-700 hover:text-rose-500 transition-colors"
+                                        >
+                                          <Trash2 size={16} />
+                                        </button>
+                                    </div>
+
+                                    {/* Editable Controls for this Leg */}
+                                    <div className="grid grid-cols-12 gap-2 items-end">
+                                          <div className="col-span-3">
+                                              <label className="text-[8px] text-gray-600 uppercase font-mono block mb-1">Pick</label>
+                                              <button 
+                                                  onClick={() => handleUpdateLeg(i, { prediction: leg.prediction === 'Over' ? 'Under' : 'Over' })}
+                                                  className={`w-full py-2 rounded-lg text-[10px] font-bold font-mono border transition-all ${
+                                                      leg.prediction === 'Over' 
+                                                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
+                                                      : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+                                                  }`}
+                                              >
+                                                  {leg.prediction === 'Over' ? 'O' : 'U'}
+                                              </button>
+                                          </div>
+                                          <div className="col-span-5">
+                                              <label className="text-[8px] text-gray-600 uppercase font-mono block mb-1">Market Line</label>
+                                              <input 
+                                                  type="number" 
+                                                  step="0.5"
+                                                  value={leg.line}
+                                                  onChange={(e) => handleUpdateLeg(i, { line: parseFloat(e.target.value) || 0 })}
+                                                  className="w-full bg-gray-900 border border-gray-800 text-white text-center font-mono text-xs py-2 rounded-lg focus:border-emerald-500 outline-none"
+                                              />
+                                          </div>
+                                          <div className="col-span-4">
+                                              <label className="text-[8px] text-gray-600 uppercase font-mono block mb-1">Odds</label>
+                                              <input 
+                                                  type="number" 
+                                                  step="5"
+                                                  value={leg.bookOdds}
+                                                  onChange={(e) => handleUpdateLeg(i, { bookOdds: parseInt(e.target.value) || 0 })}
+                                                  className="w-full bg-gray-900 border border-gray-800 text-white text-center font-mono text-xs py-2 rounded-lg focus:border-emerald-500 outline-none"
+                                              />
+                                          </div>
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+
+                            {/* Master Calculation Display */}
+                            <div className="pt-6 border-t border-gray-800">
+                                  <div className="grid grid-cols-2 gap-4 mb-4">
+                                      <div className="bg-gray-950 p-4 rounded-xl border border-gray-800 text-center">
+                                          <div className="text-[9px] text-gray-500 uppercase tracking-widest mb-1 flex items-center justify-center gap-1">
+                                              <Timer size={10} /> Win Prob
+                                          </div>
+                                          <div className="text-2xl font-mono font-bold text-emerald-400">{builderStats.prob.toFixed(1)}%</div>
                                       </div>
-                                      <button 
-                                        onClick={() => setBuilderLegs(prev => prev.filter((_, idx) => idx !== i))} 
-                                        className="text-gray-700 hover:text-rose-500 transition-colors"
-                                      >
-                                         <Trash2 size={16} />
-                                      </button>
-                                   </div>
+                                      <div className="bg-gray-950 p-4 rounded-xl border border-gray-800 text-center">
+                                          <div className="text-[9px] text-gray-500 uppercase tracking-widest mb-1 flex items-center justify-center gap-1">
+                                              <TrendingUp size={10} /> Total Odds
+                                          </div>
+                                          <div className="text-2xl font-mono font-bold text-white">{builderStats.odds > 0 ? '+' : ''}{builderStats.odds}</div>
+                                      </div>
+                                  </div>
 
-                                   {/* Editable Controls for this Leg */}
-                                   <div className="grid grid-cols-12 gap-2 items-end">
-                                        <div className="col-span-3">
-                                            <label className="text-[8px] text-gray-600 uppercase font-mono block mb-1">Pick</label>
-                                            <button 
-                                                onClick={() => handleUpdateLeg(i, { prediction: leg.prediction === 'Over' ? 'Under' : 'Over' })}
-                                                className={`w-full py-2 rounded-lg text-[10px] font-bold font-mono border transition-all ${
-                                                    leg.prediction === 'Over' 
-                                                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
-                                                    : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
-                                                }`}
-                                            >
-                                                {leg.prediction === 'Over' ? 'O' : 'U'}
-                                            </button>
-                                        </div>
-                                        <div className="col-span-5">
-                                            <label className="text-[8px] text-gray-600 uppercase font-mono block mb-1">Market Line</label>
-                                            <input 
-                                                type="number" 
-                                                step="0.5"
-                                                value={leg.line}
-                                                onChange={(e) => handleUpdateLeg(i, { line: parseFloat(e.target.value) || 0 })}
-                                                className="w-full bg-gray-900 border border-gray-800 text-white text-center font-mono text-xs py-2 rounded-lg focus:border-emerald-500 outline-none"
-                                            />
-                                        </div>
-                                        <div className="col-span-4">
-                                            <label className="text-[8px] text-gray-600 uppercase font-mono block mb-1">Odds</label>
-                                            <input 
-                                                type="number" 
-                                                step="5"
-                                                value={leg.bookOdds}
-                                                onChange={(e) => handleUpdateLeg(i, { bookOdds: parseInt(e.target.value) || 0 })}
-                                                className="w-full bg-gray-900 border border-gray-800 text-white text-center font-mono text-xs py-2 rounded-lg focus:border-emerald-500 outline-none"
-                                            />
-                                        </div>
-                                   </div>
-                                </div>
-                              ))}
-                           </div>
+                                  <div className={`p-5 rounded-xl border text-center transition-all relative overflow-hidden ${builderStats.edge >= 0 ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-rose-500/10 border-rose-500/30'}`}>
+                                      <div className="absolute top-0 right-0 p-2 opacity-10">
+                                          {builderStats.edge >= 0 ? <Zap size={40} /> : <ShieldAlert size={40} />}
+                                      </div>
+                                      <div className="text-[9px] text-gray-500 uppercase tracking-widest mb-1 relative z-10 font-bold">Mathematical Model Edge (+EV)</div>
+                                      <div className={`text-4xl font-mono font-bold relative z-10 ${builderStats.edge >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                          {builderStats.edge >= 0 ? '+' : ''}{builderStats.edge.toFixed(1)}%
+                                      </div>
+                                      <div className="text-[8px] text-gray-600 uppercase font-mono mt-2 italic">Refined in real-time by Bayesian engine</div>
+                                  </div>
 
-                           {/* Master Calculation Display */}
-                           <div className="pt-6 border-t border-gray-800">
-                                <div className="grid grid-cols-2 gap-4 mb-4">
-                                    <div className="bg-gray-950 p-4 rounded-xl border border-gray-800 text-center">
-                                        <div className="text-[9px] text-gray-500 uppercase tracking-widest mb-1 flex items-center justify-center gap-1">
-                                            <Timer size={10} /> Win Prob
-                                        </div>
-                                        <div className="text-2xl font-mono font-bold text-emerald-400">{builderStats.prob.toFixed(1)}%</div>
-                                    </div>
-                                    <div className="bg-gray-950 p-4 rounded-xl border border-gray-800 text-center">
-                                        <div className="text-[9px] text-gray-500 uppercase tracking-widest mb-1 flex items-center justify-center gap-1">
-                                            <TrendingUp size={10} /> Total Odds
-                                        </div>
-                                        <div className="text-2xl font-mono font-bold text-white">{builderStats.odds > 0 ? '+' : ''}{builderStats.odds}</div>
-                                    </div>
-                                </div>
-
-                                <div className={`p-5 rounded-xl border text-center transition-all relative overflow-hidden ${builderStats.edge >= 0 ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-rose-500/10 border-rose-500/30'}`}>
-                                    <div className="absolute top-0 right-0 p-2 opacity-10">
-                                        {builderStats.edge >= 0 ? <Zap size={40} /> : <ShieldAlert size={40} />}
-                                    </div>
-                                    <div className="text-[9px] text-gray-500 uppercase tracking-widest mb-1 relative z-10 font-bold">Mathematical Model Edge (+EV)</div>
-                                    <div className={`text-4xl font-mono font-bold relative z-10 ${builderStats.edge >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                        {builderStats.edge >= 0 ? '+' : ''}{builderStats.edge.toFixed(1)}%
-                                    </div>
-                                    <div className="text-[8px] text-gray-600 uppercase font-mono mt-2 italic">Refined in real-time by Bayesian engine</div>
-                                </div>
-
-                                <button className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-gray-950 rounded-xl font-bold tracking-[0.2em] uppercase text-xs transition-all shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-3 mt-6 active:scale-95">
-                                    <Settings2 size={18} /> Sync to Session Slip
-                                </button>
-                           </div>
-                        </div>
-                     )}
-                  </div>
-               </div>
+                                  <button className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-gray-950 rounded-xl font-bold tracking-[0.2em] uppercase text-xs transition-all shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-3 mt-6 active:scale-95">
+                                      <Settings2 size={18} /> Sync to Session Slip
+                                  </button>
+                            </div>
+                          </div>
+                      )}
+                    </div>
+                </div>
+              </div>
             </div>
           </div>
         )}

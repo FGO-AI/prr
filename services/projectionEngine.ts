@@ -1,3 +1,4 @@
+
 import { BetLeg } from '../types';
 
 /**
@@ -37,24 +38,34 @@ export const impliedProbFromAmericanOdds = (odds: number): number => {
 
 export const calculateEngineMetrics = (leg: BetLeg) => {
   const {
-    x10 = 0, x20 = 0, xSeason = 0, sigma = 1,
+    x10 = 0, x20 = 0, xSeason = 0, sigma = 0,
     expectedMins = 30, avgMins = 30,
     expectedPace = 100, leaguePace = 100,
     oppAllowed = 20, leagueAllowed = 20,
     line = 0, bookOdds = -110
   } = leg;
 
-  const muPlayer = calcBaselineMean(x10, x20, xSeason);
+  // Fallback Logic: If no historical form is available (common in live search),
+  // we assume the market line is the current baseline estimate of the mean.
+  let muPlayer = calcBaselineMean(x10, x20, xSeason);
+  if (muPlayer === 0 && line > 0) {
+    muPlayer = line;
+  }
+
+  // Fallback Sigma: If no volatility is provided, assume a standard 20% Coefficient of Variation
+  const effectiveSigma = sigma || (line * 0.2) || 1;
+
   const mMin = calcMinutesMultiplier(expectedMins, avgMins);
   const mPace = calcPaceMultiplier(expectedPace, leaguePace);
   const mOpp = calcOpponentMultiplier(oppAllowed, leagueAllowed);
   
   const muFinal = muPlayer * mMin * mPace * mOpp;
-  const zScore = (line - muFinal) / (sigma || 1);
+  const zScore = (line - muFinal) / effectiveSigma;
   
   const pUnder = normalCDF(zScore);
   const pOver = 1 - pUnder;
   
+  // Calculate model probability based on user prediction (O/U)
   const pModel = leg.prediction === 'Over' ? pOver : pUnder;
   const pImp = impliedProbFromAmericanOdds(bookOdds);
   const edge = (pModel - pImp) * 100;
