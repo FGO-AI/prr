@@ -1,9 +1,8 @@
-
 import React from 'react';
 import { 
     BrainCircuit, Zap, ChevronRight, Activity, BarChart3, Trophy, Timer, 
     Database, Cpu, Globe, User, Shield, Search, TrendingUp, ArrowRight,
-    HelpCircle, Book, Lock, List, RefreshCw, GitMerge, CheckCircle2,
+    HelpCircle, Book, Lock, ListIcon, RefreshCw, GitMerge, CheckCircle2,
     Settings2, Target
 } from './Icons';
 
@@ -207,7 +206,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, onStart }) => {
                         color="bg-emerald-500/10 border-emerald-500/20"
                     />
                     <FeatureCard 
-                        icon={<History size={24} className="text-purple-400" />}
+                        icon={<ListIcon size={24} className="text-purple-400" />}
                         title="Settled Log Sync"
                         desc="We don't hide losses. Every model pick is settled and logged in the Outcomes tab for complete transparency."
                         color="bg-purple-500/10 border-purple-500/20"

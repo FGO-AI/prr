@@ -9,7 +9,7 @@ import {
     User, 
     Shield, 
     Calendar as CalendarIcon, 
-    History, 
+    HistoryIcon, 
     ChevronRight,
     Cpu,
     Timer,
@@ -275,7 +275,7 @@ export const InputForm: React.FC<InputFormProps> = ({
                 {historySuggestions.length > 0 && (
                     <div className="mb-2">
                         <div className="px-4 py-2 text-[9px] uppercase text-gray-500 font-bold tracking-widest border-b border-gray-800/50 flex justify-between items-center bg-gray-900/40 sticky top-0 backdrop-blur-sm z-10">
-                            <span className="flex items-center gap-1.5"><History size={11} /> Recent Queries</span>
+                            <span className="flex items-center gap-1.5"><HistoryIcon size={11} /> Recent Queries</span>
                             <button 
                                 onClick={clearHistory} 
                                 className="text-gray-600 hover:text-rose-400 transition-colors flex items-center gap-1 px-2 py-0.5 rounded hover:bg-rose-500/10"

@@ -109,6 +109,8 @@ export const fetchTrendingPicks = async (): Promise<ParlayRecommendation[]> => {
       STRICT OPERATIONAL DIRECTIVE: IDENTIFY TOP 3 TRENDING PLAYER PROPS FOR ${marketDate}.
       USE googleSearch TO FIND LIVE LINES ON: DraftKings, FanDuel, PrizePicks, Underdog.
       
+      IMPORTANT: For each player, include the last 10 games for NBA and last 5 games for NFL/MLB in the "recentGames" array.
+      
       OUTPUT JSON STRUCTURE:
       {
         "recommendations": [
@@ -119,7 +121,7 @@ export const fetchTrendingPicks = async (): Promise<ParlayRecommendation[]> => {
               {
                 "playerName": "string", "team": "string", "opponent": "string", "statType": "string",
                 "line": number, "prediction": "Over", "bookOdds": number, "modelProb": number, "edge": number,
-                "recentGames": [{"date": "string", "opponent": "string", "value": number, "hit": boolean}]
+                "recentGames": [{"date": "string", "opponent": "string", "value": number, "minutes": number, "hit": boolean}]
               }
             ]
           }
@@ -129,56 +131,13 @@ export const fetchTrendingPicks = async (): Promise<ParlayRecommendation[]> => {
 
     try {
         const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: 'gemini-3-flash-preview',
             contents: prompt,
             config: { tools: [{ googleSearch: {} }], temperature: 0.1 }
         });
         return parseResponse(response.text || "");
     } catch (err) {
         console.error("Trending Fetch Failed:", err);
-        return [];
-    }
-};
-
-export const fetchGroundedOutcomes = async (league: League): Promise<any[]> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = `
-      STRICT OPERATIONAL DIRECTIVE: FETCH RECENT SETTLED PLAYER PROP OUTCOMES FOR THE ${league}.
-      
-      TASK: Use googleSearch to find actual game results and player stats from ESPN, NBA.com, or NFL.com 
-      for the most recent 2-3 days of competition. If the league is in the off-season, find the most 
-      recent major event (e.g. Super Bowl LVIII for NFL).
-      
-      RETURN 5-8 REAL ENTRIES IN JSON:
-      {
-        "outcomes": [
-          {
-            "id": "string",
-            "player": "Full Name",
-            "opponent": "Team Abbreviation",
-            "prop": "e.g. O 25.5 PTS",
-            "result": "Actual Stat Value",
-            "outcome": "WIN" | "LOSS",
-            "odds": "e.g. -110",
-            "date": "YYYY-MM-DD",
-            "type": "prop" | "parlay",
-            "label": "string (optional for parlays)"
-          }
-        ]
-      }
-    `;
-
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: prompt,
-            config: { tools: [{ googleSearch: {} }], temperature: 0.1 }
-        });
-        const jsonString = cleanJsonText(response.text || "");
-        const parsed = JSON.parse(jsonString);
-        return parsed.outcomes || [];
-    } catch (err) {
-        console.error("Grounded Outcomes Fetch Failed:", err);
         return [];
     }
 };
@@ -198,7 +157,9 @@ export const generateParlays = async (
       STRICT OPERATIONAL DIRECTIVE: EXHAUSTIVE MARKET SCAN FOR "${filters}" (${league}) ON ${marketDate}.
       
       TASK 1: USE googleSearch to find EVERY SINGLE LIVE PROP LINE for "${filters}" on books.
-      TASK 2: Only return players/matchups with confirmed lines for today or the next scheduled game.
+      TASK 2: Include comprehensive game logs in "recentGames": 
+              - FOR NBA: Provide the last 10 games.
+              - FOR NFL/MLB: Provide the last 5 games.
       
       OUTPUT JSON STRUCTURE:
       {
@@ -211,7 +172,8 @@ export const generateParlays = async (
                 "playerName": "string", "team": "string", "opponent": "string", "statType": "string",
                 "line": number, "prediction": "Over" | "Under", "bookOdds": number, 
                 "recentGames": [ { "date": "string", "opponent": "string", "value": number, "minutes": number, "hit": boolean } ],
-                "rationale": "DEF: #Rank, PACE: Diff, HIT: X/5"
+                "rationale": "DEF: #Rank, PACE: Diff, HIT: X/5",
+                "leagueAvg": number
               }
             ]
           }
@@ -229,5 +191,54 @@ export const generateParlays = async (
     } catch (err) {
         console.error("Analysis Failed:", err);
         throw new Error("The analytical bridge encountered an error while scanning the market.");
+    }
+};
+
+// Fix: Exported fetchGroundedOutcomes to satisfy App.tsx import.
+/**
+ * Fetches recent actual betting outcomes for a given league using Google Search grounding.
+ * This function provides the "Grounded Outcomes" data shown in the History tab.
+ */
+export const fetchGroundedOutcomes = async (league: League): Promise<any[]> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const prompt = `Search for and provide 5 recent actual completed player prop betting outcomes for ${league}.
+    Return a strict JSON object with an 'outcomes' key.
+    Each outcome object must include: id (unique), date (MM/DD), outcome ("WIN" or "LOSS"), player, opponent, prop, result (final stat), and odds (American).
+    Format Example:
+    {
+      "outcomes": [
+        {
+          "id": "uuid-123",
+          "date": "Oct 25",
+          "outcome": "WIN",
+          "player": "LeBron James",
+          "opponent": "Kings",
+          "prop": "Over 24.5 Pts",
+          "result": "32",
+          "odds": "-110"
+        }
+      ]
+    }`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt,
+            config: { 
+                tools: [{ googleSearch: {} }], 
+                temperature: 0.1,
+                responseMimeType: "application/json"
+            }
+        });
+        
+        const text = response.text || "";
+        const parsed = JSON.parse(cleanJsonText(text));
+        return (parsed.outcomes || []).map((o: any) => ({
+            ...o,
+            id: o.id || `outcome-${Math.random().toString(36).substr(2, 9)}`
+        }));
+    } catch (err) {
+        console.error("Grounded Outcomes Sync Failed:", err);
+        return [];
     }
 };

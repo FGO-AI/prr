@@ -13,7 +13,7 @@ import { AccessCodePage } from './components/AccessCodePage';
 import { calculateEngineMetrics } from './services/projectionEngine';
 import { 
   BarChart3, ShieldAlert, Home, Zap, User, RefreshCw, 
-  Target, TrendingUp, Trophy, History, CheckCircle2, XCircle, List, Clock, Calendar, GitMerge, Timer,
+  Target, TrendingUp, Trophy, HistoryIcon, CheckCircle2, XCircle, ListIcon, Clock, Calendar, GitMerge, Timer,
   Search, Plus, Trash2, Cpu, ArrowRight, BrainCircuit, X, Settings2
 } from './components/Icons';
 
@@ -524,7 +524,7 @@ function App() {
             </div>
             <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden shadow-2xl">
                <div className="px-6 py-4 border-b border-gray-800 bg-gray-950/50 flex justify-between items-center">
-                  <h3 className="text-xs font-bold text-white uppercase tracking-[0.2em] flex items-center gap-2"><History size={14} className="text-emerald-500" /> {historyLeague} Settled Operations Log</h3>
+                  <h3 className="text-xs font-bold text-white uppercase tracking-[0.2em] flex items-center gap-2"><HistoryIcon size={14} className="text-emerald-500" /> {historyLeague} Settled Operations Log</h3>
                   {isHistoryLoading && <RefreshCw size={14} className="animate-spin text-emerald-500" />}
                </div>
                <div className="divide-y divide-gray-800 min-h-[400px]">
