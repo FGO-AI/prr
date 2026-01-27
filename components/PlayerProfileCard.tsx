@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useEffect } from 'react';
 import { ParlayRecommendation, BetLeg, GameLogEntry, League } from '../types';
 import { calculateEngineMetrics } from '../services/projectionEngine';
@@ -51,7 +50,7 @@ const HighlightedRationale: React.FC<{ text: string }> = ({ text }) => {
     );
 };
 
-const PerformanceDeltaAnalysis: React.FC<{ leg: BetLeg }> = ({ leg }) => {
+const PerformanceDeltaAnalysis: React.FC<{ leg: BetLeg; customLine: number }> = ({ leg, customLine }) => {
     const recentGames = useMemo(() => (leg.recentGames || []).slice(0, 10), [leg.recentGames]);
     const last5 = useMemo(() => recentGames.slice(0, 5).reverse(), [recentGames]);
     
@@ -59,24 +58,24 @@ const PerformanceDeltaAnalysis: React.FC<{ leg: BetLeg }> = ({ leg }) => {
         if (last5.length < 2) return { status: 'STABLE', color: 'text-blue-400', bg: 'bg-blue-500/10', summary: "Insufficient game logs for variance trend detection." };
         
         const actuals = last5.map(g => g.value);
-        const hits = last5.filter(g => g.value >= leg.line).length;
+        const hits = last5.filter(g => g.value >= customLine).length;
         const avgActual = actuals.reduce((a, b) => a + b, 0) / actuals.length;
-        const deviation = ((avgActual - leg.line) / leg.line) * 100;
+        const deviation = ((avgActual - customLine) / customLine) * 100;
         
         // Performance Trend Logic
-        if (hits >= 4 || (actuals[actuals.length - 1] > leg.line * 1.2 && actuals[actuals.length - 2] > leg.line)) {
+        if (hits >= 4 || (actuals[actuals.length - 1] > customLine * 1.2 && actuals[actuals.length - 2] > customLine)) {
             return { 
                 status: 'TRENDING UP', 
                 color: 'text-emerald-400', 
                 bg: 'bg-emerald-500/10',
-                summary: `Aggressive upward trajectory. Player is outperforming the ${leg.line} market line by ${deviation.toFixed(1)}% over the L5.` 
+                summary: `Aggressive upward trajectory. Player is outperforming the ${customLine} custom line by ${deviation.toFixed(1)}% over the L5.` 
             };
-        } else if (hits <= 1 || (actuals[actuals.length - 1] < leg.line * 0.8 && actuals[actuals.length - 2] < leg.line)) {
+        } else if (hits <= 1 || (actuals[actuals.length - 1] < customLine * 0.8 && actuals[actuals.length - 2] < customLine)) {
             return { 
                 status: 'UNDERPERFORMING', 
                 color: 'text-rose-400', 
                 bg: 'bg-rose-500/10',
-                summary: `Market line overvaluation detected. Performance is averaging ${Math.abs(deviation).toFixed(1)}% below the current ${leg.line} projection.` 
+                summary: `Market line overvaluation detected. Performance is averaging ${Math.abs(deviation).toFixed(1)}% below the current ${customLine} projection.` 
             };
         } else {
             return { 
@@ -86,7 +85,7 @@ const PerformanceDeltaAnalysis: React.FC<{ leg: BetLeg }> = ({ leg }) => {
                 summary: `Performance is oscillating within ±${Math.abs(deviation).toFixed(1)}% of the market line. High predictability profile.` 
             };
         }
-    }, [last5, leg.line]);
+    }, [last5, customLine]);
 
     return (
         <div className="space-y-6 animate-fadeIn">
@@ -102,8 +101,8 @@ const PerformanceDeltaAnalysis: React.FC<{ leg: BetLeg }> = ({ leg }) => {
 
             <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                 {last5.map((game, idx) => {
-                    const diff = game.value - leg.line;
-                    const isHit = game.value >= leg.line;
+                    const diff = game.value - customLine;
+                    const isHit = game.value >= customLine;
                     return (
                         <div key={idx} className="bg-gray-900 border border-gray-800 rounded-xl p-3 flex flex-col items-center group hover:border-gray-700 transition-all">
                             <div className="text-[8px] text-gray-600 font-mono uppercase mb-2">{game.date}</div>
@@ -114,7 +113,7 @@ const PerformanceDeltaAnalysis: React.FC<{ leg: BetLeg }> = ({ leg }) => {
                             <div className="w-full h-1 bg-gray-800 rounded-full mt-3 overflow-hidden">
                                 <div 
                                     className={`h-full transition-all duration-500 ${isHit ? 'bg-emerald-500' : 'bg-rose-500'}`}
-                                    style={{ width: `${Math.min(100, (game.value / (leg.line * 1.5)) * 100)}%` }}
+                                    style={{ width: `${Math.min(100, (game.value / (customLine * 1.5)) * 100)}%` }}
                                 ></div>
                             </div>
                         </div>
@@ -125,15 +124,15 @@ const PerformanceDeltaAnalysis: React.FC<{ leg: BetLeg }> = ({ leg }) => {
     );
 };
 
-const EngineBreakdown: React.FC<{ leg: BetLeg }> = ({ leg }) => {
-    const m = useMemo(() => calculateEngineMetrics(leg), [leg]);
-    const leagueAvg = leg.leagueAvg || (leg.line * 0.9);
+const EngineBreakdown: React.FC<{ leg: BetLeg; customLine: number; customPrediction: 'Over' | 'Under' }> = ({ leg, customLine, customPrediction }) => {
+    const m = useMemo(() => calculateEngineMetrics({ ...leg, line: customLine, prediction: customPrediction }), [leg, customLine, customPrediction]);
+    const leagueAvg = leg.leagueAvg || (customLine * 0.9);
     
     return (
         <div className="mt-2 mb-4 bg-gray-950 border border-gray-800 rounded-lg overflow-hidden animate-fadeIn">
             <div className="bg-gray-900/50 px-3 py-1.5 border-b border-gray-800 flex items-center justify-between">
                 <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
-                    <Cpu size={10} /> {leg.statType} Bayesian Breakdown
+                    <Cpu size={10} /> {leg.statType} Bayesian Breakdown (Simulated)
                 </span>
                 <span className="text-[8px] text-gray-600 font-mono">League Baseline: {leagueAvg.toFixed(1)}</span>
             </div>
@@ -152,27 +151,35 @@ const EngineBreakdown: React.FC<{ leg: BetLeg }> = ({ leg }) => {
                 <div className="space-y-1">
                     <p className="text-gray-600 font-bold border-b border-gray-800 pb-0.5 mb-1 text-[8px]">PROJECTION</p>
                     <div className="flex justify-between"><span>μ Final:</span> <span className="text-blue-400 font-bold">{m.muFinal.toFixed(2)}</span></div>
-                    <div className="flex justify-between"><span>Model Edge:</span> <span className="text-emerald-400 font-bold">+{m.edge.toFixed(1)}%</span></div>
+                    <div className="flex justify-between"><span>Model Edge:</span> <span className={`font-bold ${m.edge >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{m.edge >= 0 ? '+' : ''}{m.edge.toFixed(1)}%</span></div>
                 </div>
             </div>
         </div>
     );
 };
 
-const PropRow: React.FC<{ leg: BetLeg; isActive: boolean; onSelect: () => void }> = ({ leg, isActive, onSelect }) => {
+const PropRow: React.FC<{ leg: BetLeg; isActive: boolean; onSelect: (line: number, prediction: 'Over' | 'Under') => void }> = ({ leg, isActive, onSelect }) => {
   const [showMath, setShowMath] = useState(false);
-  const m = useMemo(() => calculateEngineMetrics(leg), [leg]);
+  const [currentLine, setCurrentLine] = useState(leg.line);
+  const [currentPrediction, setCurrentPrediction] = useState<'Over' | 'Under'>(leg.prediction);
+
+  const m = useMemo(() => calculateEngineMetrics({ ...leg, line: currentLine, prediction: currentPrediction }), [leg, currentLine, currentPrediction]);
+  
   const leagueAvg = leg.leagueAvg || (leg.line * 0.85);
   const diffFromAvg = leagueAvg > 0 ? ((m.muFinal - leagueAvg) / leagueAvg) * 100 : 0;
+  const isModified = currentLine !== leg.line || currentPrediction !== leg.prediction;
 
   return (
     <div 
-      onClick={onSelect}
+      onClick={() => onSelect(currentLine, currentPrediction)}
       className={`p-4 border-b border-gray-800 transition-all group cursor-pointer relative ${isActive ? 'bg-emerald-500/10 border-l-4 border-l-emerald-500' : 'bg-gray-900 hover:bg-gray-850 border-l-4 border-l-transparent'}`}
     >
         <div className="grid grid-cols-12 gap-3 items-center">
             <div className="col-span-12 lg:col-span-3">
-                <div className="text-xs font-bold uppercase tracking-wider text-gray-100">{leg.statType}</div>
+                <div className="text-xs font-bold uppercase tracking-wider text-gray-100 flex items-center gap-2">
+                    {leg.statType}
+                    {isModified && <span className="text-[8px] bg-orange-500/20 text-orange-400 px-1 rounded-sm border border-orange-500/30">ALT</span>}
+                </div>
                 <div className="flex items-center gap-2 mt-0.5">
                     <div className="text-[8px] text-gray-600 font-mono">Lg Avg: {leagueAvg.toFixed(1)}</div>
                     <div className={`text-[8px] font-bold px-1 rounded-sm ${diffFromAvg >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
@@ -180,17 +187,36 @@ const PropRow: React.FC<{ leg: BetLeg; isActive: boolean; onSelect: () => void }
                     </div>
                 </div>
             </div>
-            <div className="col-span-4 lg:col-span-2">
+            <div className="col-span-5 lg:col-span-2">
                 <div className="flex items-center gap-1.5">
-                    <div className={`w-6 h-6 flex items-center justify-center rounded text-[10px] font-mono font-bold transition-all border ${
-                        leg.prediction === 'Over' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-rose-500/20 border-rose-500 text-rose-400'
-                    }`}>
-                        {leg.prediction === 'Over' ? 'O' : 'U'}
-                    </div>
-                    <div className="text-white text-[11px] font-mono font-bold">{leg.line}</div>
+                    <button 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            const next = currentPrediction === 'Over' ? 'Under' : 'Over';
+                            setCurrentPrediction(next);
+                            onSelect(currentLine, next);
+                        }}
+                        className={`w-6 h-6 flex items-center justify-center rounded text-[10px] font-mono font-bold transition-all border ${
+                            currentPrediction === 'Over' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-rose-500/20 border-rose-500 text-rose-400'
+                        } hover:scale-110`}
+                    >
+                        {currentPrediction === 'Over' ? 'O' : 'U'}
+                    </button>
+                    <input 
+                        type="number"
+                        step="0.5"
+                        value={currentLine}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setCurrentLine(val);
+                            onSelect(val, currentPrediction);
+                        }}
+                        className={`w-16 bg-gray-950 border ${isModified ? 'border-orange-500/50 text-orange-400' : 'border-gray-800 text-white'} rounded px-1.5 py-0.5 text-[11px] font-mono font-bold focus:outline-none focus:border-emerald-500 transition-colors`}
+                    />
                 </div>
             </div>
-            <div className="col-span-3 lg:col-span-1 text-center font-mono text-[11px] text-gray-500">{leg.bookOdds > 0 ? '+' : ''}{leg.bookOdds}</div>
+            <div className="col-span-2 lg:col-span-1 text-center font-mono text-[11px] text-gray-500">{leg.bookOdds > 0 ? '+' : ''}{leg.bookOdds}</div>
             <div className="col-span-3 lg:col-span-2 text-center">
                 <div className={`text-base font-mono font-bold ${m.pModel >= 0.6 ? 'text-emerald-400' : 'text-gray-400'}`}>{(m.pModel * 100).toFixed(0)}%</div>
                 <div className="text-[8px] text-gray-600 uppercase font-mono tracking-tighter">Win Chance</div>
@@ -202,7 +228,7 @@ const PropRow: React.FC<{ leg: BetLeg; isActive: boolean; onSelect: () => void }
                 </button>
             </div>
         </div>
-        {showMath && <div onClick={e => e.stopPropagation()}><EngineBreakdown leg={leg} /></div>}
+        {showMath && <div onClick={e => e.stopPropagation()}><EngineBreakdown leg={leg} customLine={currentLine} customPrediction={currentPrediction} /></div>}
     </div>
   );
 };
@@ -210,15 +236,22 @@ const PropRow: React.FC<{ leg: BetLeg; isActive: boolean; onSelect: () => void }
 export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data }) => {
   const [activeTab, setActiveTab] = useState<'delta' | 'trends' | 'logs'>('delta');
   const [selectedLegIndex, setSelectedLegIndex] = useState(0);
+  const [customParams, setCustomParams] = useState<{line: number, prediction: 'Over' | 'Under'} | null>(null);
 
-  useEffect(() => { setSelectedLegIndex(0); }, [data.id]);
+  useEffect(() => { 
+    setSelectedLegIndex(0); 
+    setCustomParams(null);
+  }, [data.id]);
 
   const activeLeg = useMemo(() => data.legs[selectedLegIndex] || data.legs[0], [data.legs, selectedLegIndex]);
   const playerName = activeLeg?.playerName || "Unknown";
   
-  // Explicit League Detection (Usually passed down or inferred from data)
+  // Explicit League Detection
   const isNBA = activeLeg.team.match(/(LAL|GSW|BOS|DEN|MIL|PHI|PHX|DAL|SAS|NYK|MIA|CHI|HOU|LAC|OKC|MIN|CLE|IND|ORL|NOP|SAC|ATL|BKN|CHA|DET|MEM|POR|TOR|UTA|WAS)/i);
   const gameLimit = isNBA ? 10 : 5;
+
+  const currentLine = customParams?.line ?? activeLeg.line;
+  const currentPrediction = customParams?.prediction ?? activeLeg.prediction;
 
   const statsData = useMemo(() => {
     if (!activeLeg || !activeLeg.recentGames) return [];
@@ -226,10 +259,10 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data }) =>
     return (activeLeg.recentGames || []).slice(0, gameLimit).map((g) => ({
         game: g.date,
         value: g.value,
-        line: activeLeg.line,
+        line: currentLine,
         leagueAvg: leagueAvg
     }));
-  }, [activeLeg, gameLimit]);
+  }, [activeLeg, gameLimit, currentLine]);
 
   return (
     <div className="bg-gray-850 rounded-xl border border-gray-800 shadow-xl overflow-hidden relative">
@@ -269,7 +302,7 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data }) =>
 
        <div className="p-6 min-h-[350px]">
           {activeTab === 'delta' ? (
-             <PerformanceDeltaAnalysis leg={activeLeg} />
+             <PerformanceDeltaAnalysis leg={activeLeg} customLine={currentLine} />
           ) : activeTab === 'trends' ? (
             <div className="animate-fadeIn h-64 w-full relative">
                 <div className="absolute top-0 right-0 z-10 flex gap-4 text-[9px] font-mono p-2">
@@ -282,7 +315,7 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data }) =>
                         <XAxis dataKey="game" hide />
                         <YAxis tick={{fill: '#4b5563', fontSize: 9}} axisLine={false} tickLine={false} />
                         <Tooltip contentStyle={{ backgroundColor: '#030712', border: '1px solid #1f2937', fontSize: '10px' }} />
-                        <ReferenceLine y={activeLeg.line} stroke="#ffffff" strokeDasharray="5 5" opacity={0.3} />
+                        <ReferenceLine y={currentLine} stroke="#ffffff" strokeDasharray="5 5" opacity={0.3} />
                         <Line type="monotone" dataKey="leagueAvg" stroke="#3b82f6" strokeWidth={1} strokeDasharray="3 3" dot={false} opacity={0.6} />
                         <Area type="monotone" dataKey="value" stroke="#10b981" fillOpacity={0.1} fill="#10b981" strokeWidth={3} />
                     </AreaChart>
@@ -297,21 +330,24 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data }) =>
                             <th className="px-4 py-3 text-left">Opponent</th>
                             <th className="px-4 py-3 text-center">Minutes</th>
                             <th className="px-4 py-3 text-right">Actual Stat</th>
-                            <th className="px-4 py-3 text-center">Outcome</th>
+                            <th className="px-4 py-3 text-center">Outcome (v Line)</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-800/50">
-                        {(activeLeg.recentGames || []).slice(0, gameLimit).map((log, i) => (
-                            <tr key={i} className="hover:bg-white/5 transition-colors">
-                                <td className="px-4 py-2.5 text-gray-400">{log.date}</td>
-                                <td className="px-4 py-2.5 font-bold text-gray-200">{log.opponent}</td>
-                                <td className="px-4 py-2.5 text-center text-gray-500"><ClockIcon size={10} className="inline mr-1" /> {log.minutes || '--'}</td>
-                                <td className="px-4 py-2.5 text-right font-bold text-white">{log.value}</td>
-                                <td className="px-4 py-2.5 text-center">
-                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${log.hit ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>{log.hit ? 'HIT' : 'MISS'}</span>
-                                </td>
-                            </tr>
-                        ))}
+                        {(activeLeg.recentGames || []).slice(0, gameLimit).map((log, i) => {
+                            const isHit = log.value >= currentLine;
+                            return (
+                                <tr key={i} className="hover:bg-white/5 transition-colors">
+                                    <td className="px-4 py-2.5 text-gray-400">{log.date}</td>
+                                    <td className="px-4 py-2.5 font-bold text-gray-200">{log.opponent}</td>
+                                    <td className="px-4 py-2.5 text-center text-gray-500"><ClockIcon size={10} className="inline mr-1" /> {log.minutes || '--'}</td>
+                                    <td className="px-4 py-2.5 text-right font-bold text-white">{log.value}</td>
+                                    <td className="px-4 py-2.5 text-center">
+                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${isHit ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>{isHit ? 'HIT' : 'MISS'}</span>
+                                    </td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
@@ -319,13 +355,21 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data }) =>
        </div>
 
        <div className="bg-gray-950/80 border-t border-b border-gray-800 py-3 px-6 flex items-center justify-between sticky top-0 z-20">
-           <span className="text-[10px] font-bold text-white uppercase tracking-widest flex items-center gap-2"><ListIcon size={14} className="text-emerald-500" /> Exhaustive Stat Markets</span>
+           <span className="text-[10px] font-bold text-white uppercase tracking-widest flex items-center gap-2"><ListIcon size={14} className="text-emerald-500" /> Exhaustive Stat Markets <span className="text-[9px] text-gray-600 font-normal normal-case">(Click O/U or line to simulate alternates)</span></span>
            <span className="text-[9px] text-gray-600 font-mono italic animate-pulse">Synced to Official League Feed</span>
        </div>
 
        <div className="max-h-[600px] overflow-y-auto custom-scrollbar">
           {data.legs.map((leg, i) => (
-             <PropRow key={i} leg={leg} isActive={activeLeg === leg} onSelect={() => setSelectedLegIndex(i)} />
+             <PropRow 
+                key={i} 
+                leg={leg} 
+                isActive={selectedLegIndex === i} 
+                onSelect={(line, prediction) => {
+                    setSelectedLegIndex(i);
+                    setCustomParams({line, prediction});
+                }} 
+             />
           ))}
        </div>
 
