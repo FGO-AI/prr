@@ -1,20 +1,12 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { ParlayRecommendation, BetLeg, GameLogEntry, League } from '../types';
 import { calculateEngineMetrics } from '../services/projectionEngine';
 import { 
-    Activity, Globe, TrendingUp, BarChart3, User, Zap, Lock, BrainCircuit, 
-    HistoryIcon, TableIcon, CheckCircle2, XCircle, HelpCircle, AlertCircle, Trophy, GitMerge, Timer, ArrowRight, DollarSign, ChevronRight, Cpu, 
-    TrendingDown,
-    ListIcon,
-    RefreshCw,
-    Search,
-    Book,
-    Timer as ClockIcon,
-    Target
+    Activity, Globe, TrendingUp, User, Zap, BrainCircuit, 
+    RefreshCw, ChevronRight, Cpu, Target, Settings2, DollarSign, Clock as ClockIcon,
+    AlertCircle, Shield, TrendingDown, Timer, Database
 } from './Icons';
-import { 
-    ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, Line
-} from 'recharts';
 
 interface PlayerProfileCardProps {
   data: ParlayRecommendation;
@@ -23,26 +15,20 @@ interface PlayerProfileCardProps {
 
 const HighlightedRationale: React.FC<{ text: string }> = ({ text }) => {
     if (!text) return null;
-    const regex = /((?:DEF: #?\d+)|(?:PACE: [+-]?\d+(?:\.\d+)?%)|(?:HIT: \d+\/\d+)|(?:SITUATIONAL: [^,.]+)|(?:L\d+)|(?:Rank #?\d+)|(?:\d+th)|(?:vs \w+)|(?:Pace)|(?:Usage)|(?:Def))/gi;
+    const regex = /(MATH:|Line|μ|σ|ROI|Z-Score|Edge|discrepancy|[-+]?\d*\.?\d+%?|OVER|UNDER)/gi;
     const parts = text.split(regex);
+    
     return (
-        <span>
+        <span className="font-sans">
             {parts.map((part, i) => {
-                if (part.match(regex)) {
-                    let colorClass = 'text-gray-200 bg-gray-800/50';
-                    if (part.toUpperCase().startsWith('DEF:')) colorClass = 'text-orange-400 bg-orange-400/10 border-orange-400/20';
-                    if (part.toUpperCase().startsWith('PACE:')) colorClass = 'text-blue-400 bg-blue-400/10 border-blue-400/20';
-                    if (part.toUpperCase().startsWith('HIT:')) colorClass = 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20';
-                    if (part.toUpperCase().startsWith('SITUATIONAL:')) colorClass = 'text-purple-400 bg-purple-400/10 border-purple-400/20';
-
-                    return (
-                        <span 
-                          key={i} 
-                          className={`${colorClass} font-bold font-mono text-[9px] px-1.5 py-0.5 rounded border mx-0.5 inline-flex items-center gap-1 transition-all hover:scale-105`}
-                        >
-                          {part}
-                        </span>
-                    );
+                const isMath = regex.test(part);
+                if (isMath) {
+                   const isVerdict = /OVER|UNDER/i.test(part);
+                   return (
+                       <span key={i} className={`font-mono font-bold ${isVerdict ? 'text-emerald-400 bg-emerald-500/10 px-1 rounded' : 'text-blue-400'}`}>
+                           {part}
+                       </span>
+                   );
                 }
                 return <span key={i} className="text-gray-400">{part}</span>;
             })}
@@ -50,332 +36,282 @@ const HighlightedRationale: React.FC<{ text: string }> = ({ text }) => {
     );
 };
 
-const PerformanceDeltaAnalysis: React.FC<{ leg: BetLeg; customLine: number }> = ({ leg, customLine }) => {
-    const recentGames = useMemo(() => (leg.recentGames || []).slice(0, 10), [leg.recentGames]);
-    const last5 = useMemo(() => recentGames.slice(0, 5).reverse(), [recentGames]);
+const MetricBadge: React.FC<{ label: string; value: string; sub?: string; icon: React.ReactNode }> = ({ label, value, sub, icon }) => (
+    <div className="bg-gray-900/80 border border-gray-800 p-3 rounded-xl flex items-center justify-between group hover:border-gray-700 transition-all">
+        <div className="flex items-center gap-3">
+            <div className="p-2 bg-gray-950 rounded-lg text-gray-500 group-hover:text-emerald-400 transition-colors">
+                {icon}
+            </div>
+            <div>
+                <div className="text-[8px] text-gray-600 font-bold uppercase tracking-widest">{label}</div>
+                <div className="text-[10px] text-gray-400 font-mono mt-0.5">{sub}</div>
+            </div>
+        </div>
+        <div className="text-right">
+            <div className="text-sm font-mono font-bold text-white">{value}</div>
+        </div>
+    </div>
+);
+
+export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data, bankroll = 1000 }) => {
+    const [selectedLegIdx, setSelectedLegIdx] = useState(0);
+    const leg = data.legs[selectedLegIdx];
     
-    const trendAnalysis = useMemo(() => {
-        if (last5.length < 2) return { status: 'STABLE', color: 'text-blue-400', bg: 'bg-blue-500/10', summary: "Insufficient game logs for variance trend detection." };
-        
-        const actuals = last5.map(g => g.value);
-        const hits = last5.filter(g => g.value >= customLine).length;
-        const avgActual = actuals.reduce((a, b) => a + b, 0) / actuals.length;
-        const deviation = ((avgActual - customLine) / customLine) * 100;
-        
-        // Performance Trend Logic
-        if (hits >= 4 || (actuals[actuals.length - 1] > customLine * 1.2 && actuals[actuals.length - 2] > customLine)) {
-            return { 
-                status: 'TRENDING UP', 
-                color: 'text-emerald-400', 
-                bg: 'bg-emerald-500/10',
-                summary: `Aggressive upward trajectory. Player is outperforming the ${customLine} custom line by ${deviation.toFixed(1)}% over the L5.` 
-            };
-        } else if (hits <= 1 || (actuals[actuals.length - 1] < customLine * 0.8 && actuals[actuals.length - 2] < customLine)) {
-            return { 
-                status: 'UNDERPERFORMING', 
-                color: 'text-rose-400', 
-                bg: 'bg-rose-500/10',
-                summary: `Market line overvaluation detected. Performance is averaging ${Math.abs(deviation).toFixed(1)}% below the current ${customLine} projection.` 
-            };
-        } else {
-            return { 
-                status: 'STABLE', 
-                color: 'text-blue-400', 
-                bg: 'bg-blue-500/10',
-                summary: `Performance is oscillating within ±${Math.abs(deviation).toFixed(1)}% of the market line. High predictability profile.` 
-            };
+    const [customLine, setCustomLine] = useState(leg?.line || 0);
+    const [customPrediction, setCustomPrediction] = useState<'Over' | 'Under'>(leg?.prediction as 'Over' | 'Under' || 'Over');
+    const [customOdds, setCustomOdds] = useState(leg?.bookOdds || -110);
+    const [isRecalculating, setIsRecalculating] = useState(false);
+
+    useEffect(() => {
+        if (leg) {
+            setCustomLine(leg.line);
+            setCustomPrediction(leg.prediction as 'Over' | 'Under');
+            setCustomOdds(leg.bookOdds);
         }
-    }, [last5, customLine]);
+    }, [leg]);
+
+    const metrics = useMemo(() => {
+        if (!leg) return null;
+        return calculateEngineMetrics({ 
+            ...leg, 
+            line: customLine, 
+            prediction: customPrediction,
+            bookOdds: customOdds
+        });
+    }, [leg, customLine, customPrediction, customOdds]);
+
+    const handleRecalculate = () => {
+        setIsRecalculating(true);
+        setTimeout(() => {
+            setIsRecalculating(false);
+        }, 800);
+    };
+
+    if (!leg || !metrics) return null;
+
+    const sideColor = customPrediction === 'Over' ? 'emerald' : 'rose';
 
     return (
-        <div className="space-y-6 animate-fadeIn">
-            <div className={`p-4 rounded-xl border flex flex-col md:flex-row items-center gap-4 ${trendAnalysis.bg} border-gray-800/50`}>
-                <div className={`px-3 py-1.5 rounded-lg border border-current font-bold font-mono text-xs ${trendAnalysis.color}`}>
-                    {trendAnalysis.status}
+        <div className={`bg-gray-850 rounded-2xl border border-gray-800 overflow-hidden shadow-2xl animate-fadeIn group mb-8 transition-all duration-500 ${isRecalculating ? 'opacity-50 blur-[1px] scale-[0.99]' : 'opacity-100 blur-0 scale-100'}`}>
+            {/* Direct Verdict Header */}
+            <div className={`p-4 bg-${sideColor}-500/10 border-b border-${sideColor}-500/20 flex items-center justify-between relative`}>
+                <div className="flex items-center gap-3">
+                    <div className={`w-3 h-3 rounded-full bg-${sideColor}-500 ${isRecalculating ? 'animate-ping' : 'animate-pulse'}`}></div>
+                    <span className={`text-[11px] font-black text-${sideColor}-400 uppercase tracking-[0.25em] font-mono`}>
+                        SYSTEM VERDICT: {customPrediction.toUpperCase()} {customLine} @ {customOdds > 0 ? '+' : ''}{customOdds}
+                    </span>
                 </div>
-                <div className="flex-1 text-xs text-gray-300 leading-relaxed font-medium italic">
-                    <span className="text-gray-500 not-italic mr-2">ALGORITHMIC SUMMARY:</span>
-                    "{trendAnalysis.summary}"
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-1.5 bg-gray-950 px-2 py-1 rounded border border-gray-800">
+                        <TrendingUp size={12} className="text-emerald-500" />
+                        <span className="text-[9px] font-bold text-gray-500 font-mono uppercase">
+                            {isRecalculating ? 'SIMULATING...' : `Edge: ${metrics.edge.toFixed(1)}%`}
+                        </span>
+                    </div>
+                    <Shield size={14} className={`text-${sideColor}-500`} />
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                {last5.map((game, idx) => {
-                    const diff = game.value - customLine;
-                    const isHit = game.value >= customLine;
-                    return (
-                        <div key={idx} className="bg-gray-900 border border-gray-800 rounded-xl p-3 flex flex-col items-center group hover:border-gray-700 transition-all">
-                            <div className="text-[8px] text-gray-600 font-mono uppercase mb-2">{game.date}</div>
-                            <div className="text-xl font-mono font-bold text-white mb-1">{game.value}</div>
-                            <div className={`text-[10px] font-bold font-mono ${isHit ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                {isHit ? '+' : ''}{diff.toFixed(1)}
-                            </div>
-                            <div className="w-full h-1 bg-gray-800 rounded-full mt-3 overflow-hidden">
-                                <div 
-                                    className={`h-full transition-all duration-500 ${isHit ? 'bg-emerald-500' : 'bg-rose-500'}`}
-                                    style={{ width: `${Math.min(100, (game.value / (customLine * 1.5)) * 100)}%` }}
-                                ></div>
-                            </div>
+            {/* Player Info Section */}
+            <div className="p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-gray-900/40">
+                <div className="flex items-center gap-5">
+                    <div className="w-16 h-16 rounded-2xl bg-gray-950 border border-gray-800 flex items-center justify-center relative overflow-hidden shadow-inner group-hover:border-emerald-500/30 transition-all">
+                        <User size={36} className="text-gray-700 relative z-10" />
+                        <div className={`absolute inset-0 bg-${sideColor}-500/5`}></div>
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-3 mb-1.5">
+                            <h3 className="text-2xl font-bold text-white tracking-tight">{leg.playerName}</h3>
+                            <span className="px-2 py-0.5 rounded bg-gray-800 border border-gray-700 text-[10px] font-mono text-gray-400 uppercase tracking-widest">{leg.team}</span>
                         </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
-};
-
-const EngineBreakdown: React.FC<{ leg: BetLeg; customLine: number; customPrediction: 'Over' | 'Under' }> = ({ leg, customLine, customPrediction }) => {
-    const m = useMemo(() => calculateEngineMetrics({ ...leg, line: customLine, prediction: customPrediction }), [leg, customLine, customPrediction]);
-    const leagueAvg = leg.leagueAvg || (customLine * 0.9);
-    
-    return (
-        <div className="mt-2 mb-4 bg-gray-950 border border-gray-800 rounded-lg overflow-hidden animate-fadeIn">
-            <div className="bg-gray-900/50 px-3 py-1.5 border-b border-gray-800 flex items-center justify-between">
-                <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
-                    <Cpu size={10} /> {leg.statType} Bayesian Breakdown (Simulated)
-                </span>
-                <span className="text-[8px] text-gray-600 font-mono">League Baseline: {leagueAvg.toFixed(1)}</span>
-            </div>
-            
-            <div className="p-3 grid grid-cols-1 md:grid-cols-3 gap-4 text-[10px] font-mono text-gray-400">
-                <div className="space-y-1">
-                    <p className="text-gray-600 font-bold border-b border-gray-800 pb-0.5 mb-1 text-[8px]">PLAYER PROFILE</p>
-                    <div className="flex justify-between"><span>L10 Avg:</span> <span className="text-white">{leg.x10?.toFixed(1) || '0.0'}</span></div>
-                    <div className="flex justify-between"><span>μ Base:</span> <span className="text-emerald-400">{m.muPlayer.toFixed(2)}</span></div>
+                        <div className="flex items-center gap-4 text-[10px] font-mono text-gray-500 uppercase tracking-widest font-bold">
+                           <span className="flex items-center gap-1.5"><Zap size={12} className="text-yellow-500" /> CONFIDENCE: {(metrics.confidence * 100).toFixed(0)}%</span>
+                           <span className="flex items-center gap-1.5 text-blue-400 uppercase tracking-tighter"><BrainCircuit size={12} /> Model: {metrics.modelUsed}</span>
+                        </div>
+                    </div>
                 </div>
-                <div className="space-y-1">
-                    <p className="text-gray-600 font-bold border-b border-gray-800 pb-0.5 mb-1 text-[8px]">ADJUSTMENTS</p>
-                    <div className="flex justify-between"><span>Pace Mod:</span> <span className="text-white">{m.mPace.toFixed(3)}x</span></div>
-                    <div className="flex justify-between"><span>Def Mod:</span> <span className="text-white">{m.mOpp.toFixed(3)}x</span></div>
-                </div>
-                <div className="space-y-1">
-                    <p className="text-gray-600 font-bold border-b border-gray-800 pb-0.5 mb-1 text-[8px]">PROJECTION</p>
-                    <div className="flex justify-between"><span>μ Final:</span> <span className="text-blue-400 font-bold">{m.muFinal.toFixed(2)}</span></div>
-                    <div className="flex justify-between"><span>Model Edge:</span> <span className={`font-bold ${m.edge >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{m.edge >= 0 ? '+' : ''}{m.edge.toFixed(1)}%</span></div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const PropRow: React.FC<{ leg: BetLeg; isActive: boolean; onSelect: (line: number, prediction: 'Over' | 'Under') => void }> = ({ leg, isActive, onSelect }) => {
-  const [showMath, setShowMath] = useState(false);
-  const [currentLine, setCurrentLine] = useState(leg.line);
-  const [currentPrediction, setCurrentPrediction] = useState<'Over' | 'Under'>(leg.prediction);
-
-  const m = useMemo(() => calculateEngineMetrics({ ...leg, line: currentLine, prediction: currentPrediction }), [leg, currentLine, currentPrediction]);
-  
-  const leagueAvg = leg.leagueAvg || (leg.line * 0.85);
-  const diffFromAvg = leagueAvg > 0 ? ((m.muFinal - leagueAvg) / leagueAvg) * 100 : 0;
-  const isModified = currentLine !== leg.line || currentPrediction !== leg.prediction;
-
-  return (
-    <div 
-      onClick={() => onSelect(currentLine, currentPrediction)}
-      className={`p-4 border-b border-gray-800 transition-all group cursor-pointer relative ${isActive ? 'bg-emerald-500/10 border-l-4 border-l-emerald-500' : 'bg-gray-900 hover:bg-gray-850 border-l-4 border-l-transparent'}`}
-    >
-        <div className="grid grid-cols-12 gap-3 items-center">
-            <div className="col-span-12 lg:col-span-3">
-                <div className="text-xs font-bold uppercase tracking-wider text-gray-100 flex items-center gap-2">
-                    {leg.statType}
-                    {isModified && <span className="text-[8px] bg-orange-500/20 text-orange-400 px-1 rounded-sm border border-orange-500/30">ALT</span>}
-                </div>
-                <div className="flex items-center gap-2 mt-0.5">
-                    <div className="text-[8px] text-gray-600 font-mono">Lg Avg: {leagueAvg.toFixed(1)}</div>
-                    <div className={`text-[8px] font-bold px-1 rounded-sm ${diffFromAvg >= 0 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
-                        {diffFromAvg >= 0 ? '+' : ''}{diffFromAvg.toFixed(0)}% vs Avg
+                <div className="flex items-center gap-8 w-full md:w-auto pt-4 md:pt-0 border-t md:border-t-0 border-gray-800/50">
+                    <div className="text-right">
+                        <div className="text-[10px] text-gray-600 font-bold uppercase tracking-widest mb-1 font-mono">Win Prob</div>
+                        <div className={`text-3xl font-mono font-bold text-${sideColor}-400`}>{(metrics.pModel * 100).toFixed(0)}%</div>
+                    </div>
+                    <div className="h-12 w-px bg-gray-800 hidden md:block"></div>
+                    <div className="text-right">
+                        <div className="text-[10px] text-gray-600 font-bold uppercase tracking-widest mb-1 font-mono">Unit Advice</div>
+                        <div className="text-3xl font-mono font-bold text-white">{(metrics.edge * 0.2).toFixed(1)}u</div>
                     </div>
                 </div>
             </div>
-            <div className="col-span-5 lg:col-span-2">
-                <div className="flex items-center gap-1.5">
-                    <button 
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            const next = currentPrediction === 'Over' ? 'Under' : 'Over';
-                            setCurrentPrediction(next);
-                            onSelect(currentLine, next);
-                        }}
-                        className={`w-6 h-6 flex items-center justify-center rounded text-[10px] font-mono font-bold transition-all border ${
-                            currentPrediction === 'Over' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-rose-500/20 border-rose-500 text-rose-400'
-                        } hover:scale-110`}
-                    >
-                        {currentPrediction === 'Over' ? 'O' : 'U'}
-                    </button>
-                    <input 
-                        type="number"
-                        step="0.5"
-                        value={currentLine}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0;
-                            setCurrentLine(val);
-                            onSelect(val, currentPrediction);
-                        }}
-                        className={`w-16 bg-gray-950 border ${isModified ? 'border-orange-500/50 text-orange-400' : 'border-gray-800 text-white'} rounded px-1.5 py-0.5 text-[11px] font-mono font-bold focus:outline-none focus:border-emerald-500 transition-colors`}
-                    />
+
+            <div className="p-6">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                    {/* Left Column: Decision Logic */}
+                    <div className="lg:col-span-5 space-y-6">
+                        <div className="bg-gray-900/60 p-6 rounded-2xl border border-gray-800 shadow-inner">
+                            <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] mb-6 flex items-center justify-between">
+                                <div className="flex items-center gap-2"><Settings2 size={12} /> Operational Adjuster</div>
+                                {isRecalculating && <RefreshCw size={10} className="animate-spin text-emerald-500" />}
+                            </h4>
+                            <div className="space-y-5">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <button 
+                                        onClick={() => setCustomPrediction('Over')} 
+                                        className={`py-4 rounded-xl font-bold text-xs font-mono border transition-all flex flex-col items-center justify-center gap-1 ${customPrediction === 'Over' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.1)]' : 'bg-gray-950 border-gray-800 text-gray-600 hover:text-gray-400'}`}
+                                    >
+                                        OVER
+                                        {leg.prediction === 'Over' && <span className="text-[8px] font-bold opacity-50">AI PREFERRED</span>}
+                                    </button>
+                                    <button 
+                                        onClick={() => setCustomPrediction('Under')} 
+                                        className={`py-4 rounded-xl font-bold text-xs font-mono border transition-all flex flex-col items-center justify-center gap-1 ${customPrediction === 'Under' ? 'bg-rose-500/20 border-rose-500 text-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.1)]' : 'bg-gray-950 border-gray-800 text-gray-600 hover:text-gray-400'}`}
+                                    >
+                                        UNDER
+                                        {leg.prediction === 'Under' && <span className="text-[8px] font-bold opacity-50">AI PREFERRED</span>}
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-[9px] text-gray-600 uppercase font-mono font-bold tracking-widest flex justify-between">
+                                            Market Line
+                                        </label>
+                                        <input 
+                                            type="number" 
+                                            step="0.5" 
+                                            value={customLine} 
+                                            onChange={(e) => setCustomLine(parseFloat(e.target.value) || 0)} 
+                                            className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-sm px-4 py-3 rounded-xl focus:border-emerald-500 outline-none transition-all shadow-inner" 
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[9px] text-gray-600 uppercase font-mono font-bold tracking-widest flex justify-between">
+                                            Odds (US)
+                                        </label>
+                                        <input 
+                                            type="number" 
+                                            step="5" 
+                                            value={customOdds} 
+                                            onChange={(e) => setCustomOdds(parseInt(e.target.value) || -110)} 
+                                            className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-sm px-4 py-3 rounded-xl focus:border-emerald-500 outline-none transition-all shadow-inner" 
+                                        />
+                                    </div>
+                                </div>
+
+                                <button 
+                                    onClick={handleRecalculate}
+                                    disabled={isRecalculating}
+                                    className="w-full py-4 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-xl font-bold uppercase tracking-[0.2em] text-[10px] hover:bg-emerald-500/20 hover:border-emerald-500 transition-all flex items-center justify-center gap-2 group/recalc"
+                                >
+                                    <RefreshCw size={14} className={`${isRecalculating ? 'animate-spin' : 'group-hover/recalc:rotate-180 transition-transform duration-500'}`} />
+                                    {isRecalculating ? 'RECALCULATING...' : 'Recalculate Metrics'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Quantitative Anchor */}
+                        <div className="bg-gray-950 border border-gray-800 rounded-2xl p-5 shadow-2xl">
+                            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                <BrainCircuit size={14} className="text-emerald-500" /> Decision Skew Matrix
+                            </div>
+                            <div className="space-y-4 font-mono text-[11px]">
+                                <div className="flex justify-between items-center group">
+                                    <span className="text-gray-500 group-hover:text-gray-400 transition-colors">Projected Mean (μ):</span>
+                                    <span className="text-emerald-400 font-bold text-lg">{metrics.muFinal.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between items-center group">
+                                    <span className="text-gray-500 group-hover:text-gray-400 transition-colors">Target Line (L):</span>
+                                    <span className="text-white text-lg">{customLine}</span>
+                                </div>
+                                <div className="h-px bg-gray-900 my-2"></div>
+                                <div className="flex justify-between items-center pt-1 group">
+                                    <span className="text-gray-400 font-bold uppercase tracking-widest">Model Skew (Δ):</span>
+                                    <span className={`text-lg font-bold ${customPrediction === 'Over' && metrics.muFinal > customLine ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                        {(metrics.muFinal - customLine).toFixed(2)} pts
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Right Column: Math Explanation */}
+                    <div className="lg:col-span-7 space-y-6">
+                        <div className="bg-gray-950 border border-emerald-500/20 p-6 rounded-3xl relative overflow-hidden group/math shadow-2xl">
+                            <div className="absolute top-0 right-0 p-6 opacity-5 group-hover/math:opacity-10 transition-opacity">
+                                <Cpu size={80} />
+                            </div>
+                            <h4 className="text-[11px] font-black text-emerald-400 uppercase tracking-[0.2em] mb-5 flex items-center gap-2">
+                                <Activity size={16} /> Mathematical Directives
+                            </h4>
+                            <div className="p-5 bg-gray-900/80 rounded-2xl border border-gray-800/50 text-[13px] text-gray-300 leading-relaxed italic shadow-inner mb-6">
+                                <HighlightedRationale text={leg.rationale} />
+                            </div>
+
+                            {/* Detailed Multiplier Breakdown */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                                <MetricBadge 
+                                    label="Confidence Score" 
+                                    value={`${(metrics.confidence * 100).toFixed(0)}%`} 
+                                    sub="Bayesian Shrinkage Index"
+                                    icon={<Database size={14} />} 
+                                />
+                                <MetricBadge 
+                                    label="Volatility (σ)" 
+                                    value={metrics.sigmaFinal.toFixed(2)} 
+                                    sub="Pace-Adjusted Variance"
+                                    icon={<Activity size={14} />} 
+                                />
+                                <MetricBadge 
+                                    label="Pace Multiplier" 
+                                    value={`${metrics.mPace.toFixed(2)}x`} 
+                                    sub="Tempo Adjustment"
+                                    icon={<RefreshCw size={14} />} 
+                                />
+                                <MetricBadge 
+                                    label="Opponent Factor" 
+                                    value={`${metrics.mOpp.toFixed(2)}x`} 
+                                    sub="Defensive Logic"
+                                    icon={<Shield size={14} />} 
+                                />
+                            </div>
+                            
+                            {/* AI Reasoner Box */}
+                            <div className="p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 flex items-start gap-4">
+                                <div className="mt-1">
+                                    <AlertCircle size={18} className="text-emerald-500" />
+                                </div>
+                                <div>
+                                    <p className="text-[11px] text-gray-400 leading-relaxed">
+                                        <span className="text-emerald-400 font-bold uppercase tracking-widest mr-2">Model Architect:</span> 
+                                        Utilizing the <span className="text-white font-bold">{metrics.modelUsed}</span> distribution, we have identified a high-probability divergence. Our mean of <span className="text-white font-bold">{metrics.muFinal.toFixed(1)}</span> accounts for situational pace volatility (σ={metrics.sigmaFinal.toFixed(1)}), creating a <span className={`font-bold ${metrics.edge > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                            {metrics.edge > 0 ? '+' : ''}{metrics.edge.toFixed(1)}% ROI edge
+                                        </span> against current market pricing.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Market Implied Odds Grid */}
+                        <div className="grid grid-cols-2 gap-6">
+                            <div className="bg-gray-900 p-5 rounded-2xl border border-gray-800 flex flex-col justify-between shadow-xl">
+                                <div className="text-[10px] text-gray-600 uppercase font-bold tracking-widest mb-2">Book Odds</div>
+                                <div className="text-3xl font-mono font-bold text-white mb-2">{customOdds > 0 ? '+' : ''}{customOdds}</div>
+                                <div className="text-[10px] text-gray-500 font-mono">Implied P: {(metrics.pImp * 100).toFixed(1)}%</div>
+                            </div>
+                            <div className="bg-gray-900 p-5 rounded-2xl border border-gray-800 flex flex-col justify-between shadow-xl">
+                                <div className="text-[10px] text-gray-600 uppercase font-bold tracking-widest mb-2">ROI Potential</div>
+                                <div className={`text-3xl font-mono font-bold mb-2 ${metrics.edge > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                    {metrics.edge > 0 ? '+' : ''}{(metrics.edge * 1.5).toFixed(1)}%
+                                </div>
+                                <div className="text-[10px] text-gray-500 font-mono">Kelly Scaled: {(metrics.edge * 0.2).toFixed(2)}%</div>
+                            </div>
+                        </div>
+                        
+                        <button className="w-full py-5 bg-gray-900 border border-emerald-500/30 text-emerald-400 rounded-2xl font-bold uppercase tracking-[0.3em] text-[10px] hover:bg-emerald-500/10 hover:border-emerald-500 transition-all flex items-center justify-center gap-3 group/btn">
+                           <Target size={16} className="group-hover/btn:scale-125 transition-transform" />
+                           Synchronize Decision with Constructor
+                        </button>
+                    </div>
                 </div>
-            </div>
-            <div className="col-span-2 lg:col-span-1 text-center font-mono text-[11px] text-gray-500">{leg.bookOdds > 0 ? '+' : ''}{leg.bookOdds}</div>
-            <div className="col-span-3 lg:col-span-2 text-center">
-                <div className={`text-base font-mono font-bold ${m.pModel >= 0.6 ? 'text-emerald-400' : 'text-gray-400'}`}>{(m.pModel * 100).toFixed(0)}%</div>
-                <div className="text-[8px] text-gray-600 uppercase font-mono tracking-tighter">Win Chance</div>
-            </div>
-            <div className="hidden lg:block lg:col-span-3 flex-wrap"><HighlightedRationale text={leg.rationale} /></div>
-            <div className="col-span-2 lg:col-span-1 flex justify-end">
-                <button onClick={e => { e.stopPropagation(); setShowMath(!showMath); }} className={`p-1.5 rounded-lg transition-all ${showMath ? 'bg-emerald-500 text-gray-950 shadow-lg' : 'bg-gray-800 text-gray-500'}`}>
-                    <BrainCircuit size={14} />
-                </button>
             </div>
         </div>
-        {showMath && <div onClick={e => e.stopPropagation()}><EngineBreakdown leg={leg} customLine={currentLine} customPrediction={currentPrediction} /></div>}
-    </div>
-  );
-};
-
-export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data }) => {
-  const [activeTab, setActiveTab] = useState<'delta' | 'trends' | 'logs'>('delta');
-  const [selectedLegIndex, setSelectedLegIndex] = useState(0);
-  const [customParams, setCustomParams] = useState<{line: number, prediction: 'Over' | 'Under'} | null>(null);
-
-  useEffect(() => { 
-    setSelectedLegIndex(0); 
-    setCustomParams(null);
-  }, [data.id]);
-
-  const activeLeg = useMemo(() => data.legs[selectedLegIndex] || data.legs[0], [data.legs, selectedLegIndex]);
-  const playerName = activeLeg?.playerName || "Unknown";
-  
-  // Explicit League Detection
-  const isNBA = activeLeg.team.match(/(LAL|GSW|BOS|DEN|MIL|PHI|PHX|DAL|SAS|NYK|MIA|CHI|HOU|LAC|OKC|MIN|CLE|IND|ORL|NOP|SAC|ATL|BKN|CHA|DET|MEM|POR|TOR|UTA|WAS)/i);
-  const gameLimit = isNBA ? 10 : 5;
-
-  const currentLine = customParams?.line ?? activeLeg.line;
-  const currentPrediction = customParams?.prediction ?? activeLeg.prediction;
-
-  const statsData = useMemo(() => {
-    if (!activeLeg || !activeLeg.recentGames) return [];
-    const leagueAvg = activeLeg.leagueAvg || (activeLeg.line * 0.85);
-    return (activeLeg.recentGames || []).slice(0, gameLimit).map((g) => ({
-        game: g.date,
-        value: g.value,
-        line: currentLine,
-        leagueAvg: leagueAvg
-    }));
-  }, [activeLeg, gameLimit, currentLine]);
-
-  return (
-    <div className="bg-gray-850 rounded-xl border border-gray-800 shadow-xl overflow-hidden relative">
-       <div className="absolute top-0 w-full h-1 bg-gradient-to-r from-blue-500 via-emerald-500 to-purple-500 z-10"></div>
-       <div className="p-6 flex flex-col md:flex-row items-start md:items-center gap-6">
-          <div className="w-16 h-16 rounded-xl bg-gray-900 border border-gray-800 flex items-center justify-center relative overflow-hidden">
-             <User size={32} className="text-gray-600" />
-             <div className="absolute inset-0 bg-emerald-500/5 transition-colors"></div>
-          </div>
-          <div className="flex-1">
-             <div className="flex items-center gap-2 mb-1">
-                <span className="px-1.5 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[9px] rounded uppercase font-bold tracking-widest flex items-center gap-1"><Zap size={10} fill="currentColor" /> Quant Model Verified</span>
-                <span className="px-1.5 py-0.5 bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[9px] rounded uppercase font-bold tracking-widest">{activeLeg.team} Verified Feed</span>
-             </div>
-             <h2 className="text-2xl font-bold text-white tracking-tight">{playerName}</h2>
-             <p className="text-gray-500 font-mono text-[10px] uppercase tracking-widest flex items-center gap-2 mt-1">
-                {activeLeg.team} VS {activeLeg.opponent} <span className="text-gray-800">|</span> <span className="text-emerald-400 font-bold">Target: {activeLeg.statType}</span>
-             </p>
-          </div>
-          <div className="flex gap-4">
-              <div className="bg-gray-900 border border-gray-800 p-3 rounded-lg text-right min-w-[100px]">
-                  <div className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Volatility (σ)</div>
-                  <div className="text-xl font-mono font-bold text-orange-400">{(activeLeg.sigma || 2.4).toFixed(1)}</div>
-              </div>
-              <div className="bg-gray-900 border border-gray-800 p-3 rounded-lg text-right min-w-[100px]">
-                  <div className="text-[9px] text-gray-500 uppercase tracking-widest mb-1">Sample Size</div>
-                  <div className="text-xl font-mono font-bold text-blue-400">{activeLeg.recentGames?.length || 0} G</div>
-              </div>
-          </div>
-       </div>
-
-       <div className="px-6 flex items-center gap-6 border-b border-gray-800 bg-gray-900/40">
-            <button onClick={() => setActiveTab('delta')} className={`py-3 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 border-b-2 transition-all ${activeTab === 'delta' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}><Target size={14} /> Delta Analysis (L5)</button>
-            <button onClick={() => setActiveTab('trends')} className={`py-3 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 border-b-2 transition-all ${activeTab === 'trends' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}><TrendingUp size={14} /> Historical Cycle</button>
-            <button onClick={() => setActiveTab('logs')} className={`py-3 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 border-b-2 transition-all ${activeTab === 'logs' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}><ListIcon size={14} /> Master Log (L{gameLimit})</button>
-       </div>
-
-       <div className="p-6 min-h-[350px]">
-          {activeTab === 'delta' ? (
-             <PerformanceDeltaAnalysis leg={activeLeg} customLine={currentLine} />
-          ) : activeTab === 'trends' ? (
-            <div className="animate-fadeIn h-64 w-full relative">
-                <div className="absolute top-0 right-0 z-10 flex gap-4 text-[9px] font-mono p-2">
-                    <span className="flex items-center gap-1"><div className="w-2 h-0.5 bg-emerald-500"></div> Player</span>
-                    <span className="flex items-center gap-1"><div className="w-2 h-0.5 bg-blue-500"></div> League Avg</span>
-                </div>
-                <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={statsData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" vertical={false} />
-                        <XAxis dataKey="game" hide />
-                        <YAxis tick={{fill: '#4b5563', fontSize: 9}} axisLine={false} tickLine={false} />
-                        <Tooltip contentStyle={{ backgroundColor: '#030712', border: '1px solid #1f2937', fontSize: '10px' }} />
-                        <ReferenceLine y={currentLine} stroke="#ffffff" strokeDasharray="5 5" opacity={0.3} />
-                        <Line type="monotone" dataKey="leagueAvg" stroke="#3b82f6" strokeWidth={1} strokeDasharray="3 3" dot={false} opacity={0.6} />
-                        <Area type="monotone" dataKey="value" stroke="#10b981" fillOpacity={0.1} fill="#10b981" strokeWidth={3} />
-                    </AreaChart>
-                </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden animate-fadeIn">
-                <table className="w-full text-[11px] font-mono">
-                    <thead className="bg-gray-950/50 text-gray-500 uppercase tracking-wider border-b border-gray-800">
-                        <tr>
-                            <th className="px-4 py-3 text-left">Date</th>
-                            <th className="px-4 py-3 text-left">Opponent</th>
-                            <th className="px-4 py-3 text-center">Minutes</th>
-                            <th className="px-4 py-3 text-right">Actual Stat</th>
-                            <th className="px-4 py-3 text-center">Outcome (v Line)</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-800/50">
-                        {(activeLeg.recentGames || []).slice(0, gameLimit).map((log, i) => {
-                            const isHit = log.value >= currentLine;
-                            return (
-                                <tr key={i} className="hover:bg-white/5 transition-colors">
-                                    <td className="px-4 py-2.5 text-gray-400">{log.date}</td>
-                                    <td className="px-4 py-2.5 font-bold text-gray-200">{log.opponent}</td>
-                                    <td className="px-4 py-2.5 text-center text-gray-500"><ClockIcon size={10} className="inline mr-1" /> {log.minutes || '--'}</td>
-                                    <td className="px-4 py-2.5 text-right font-bold text-white">{log.value}</td>
-                                    <td className="px-4 py-2.5 text-center">
-                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${isHit ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>{isHit ? 'HIT' : 'MISS'}</span>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            </div>
-          )}
-       </div>
-
-       <div className="bg-gray-950/80 border-t border-b border-gray-800 py-3 px-6 flex items-center justify-between sticky top-0 z-20">
-           <span className="text-[10px] font-bold text-white uppercase tracking-widest flex items-center gap-2"><ListIcon size={14} className="text-emerald-500" /> Exhaustive Stat Markets <span className="text-[9px] text-gray-600 font-normal normal-case">(Click O/U or line to simulate alternates)</span></span>
-           <span className="text-[9px] text-gray-600 font-mono italic animate-pulse">Synced to Official League Feed</span>
-       </div>
-
-       <div className="max-h-[600px] overflow-y-auto custom-scrollbar">
-          {data.legs.map((leg, i) => (
-             <PropRow 
-                key={i} 
-                leg={leg} 
-                isActive={selectedLegIndex === i} 
-                onSelect={(line, prediction) => {
-                    setSelectedLegIndex(i);
-                    setCustomParams({line, prediction});
-                }} 
-             />
-          ))}
-       </div>
-
-       <div className="bg-gray-950 py-4 px-6 flex items-center justify-center border-t border-gray-800 text-[9px] text-gray-600 font-mono italic">
-            Market baseline data updated as of {new Date().toLocaleDateString()}. Cross-referenced with historical role-based efficiency.
-       </div>
-    </div>
-  );
+    );
 };

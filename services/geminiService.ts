@@ -3,14 +3,37 @@ import { GoogleGenAI } from "@google/genai";
 import { League, RiskLevel, ParlayRecommendation, BetLeg, GameLogEntry } from "../types";
 
 const cleanJsonText = (text: string): string => {
+    if (!text) return "{}";
+    // Remove potential markdown code block markers
+    let cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    
     try {
-        const firstBrace = text.indexOf('{');
-        const lastBrace = text.lastIndexOf('}');
-        if (firstBrace === -1 || lastBrace === -1) {
-            return "{}";
+        const firstBrace = cleaned.indexOf('{');
+        const lastBrace = cleaned.lastIndexOf('}');
+        const firstBracket = cleaned.indexOf('[');
+        const lastBracket = cleaned.lastIndexOf(']');
+
+        // Determine if we are looking for an object or an array as the root
+        let start = -1;
+        let end = -1;
+
+        if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+            start = firstBrace;
+            end = lastBrace;
+        } else if (firstBracket !== -1) {
+            start = firstBracket;
+            end = lastBracket;
         }
-        let cleaned = text.substring(firstBrace, lastBrace + 1);
-        cleaned = cleaned.replace(/,\s*([\]}])/g, '$1'); 
+
+        if (start === -1 || end === -1) return "{}";
+        
+        cleaned = cleaned.substring(start, end + 1);
+        
+        // Remove trailing commas which break standard JSON.parse
+        cleaned = cleaned.replace(/,\s*([\]}])/g, '$1');
+        // Simple comment removal (lines starting with //)
+        cleaned = cleaned.replace(/^\s*\/\/.*$/gm, '');
+        
         return cleaned;
     } catch (e) {
         return "{}";
@@ -21,9 +44,7 @@ const getEffectiveMarketDate = () => {
     const now = new Date();
     const mtStr = now.toLocaleString("en-US", { timeZone: "America/Denver", hour12: false });
     const parts = mtStr.split(', ');
-    const timePart = parts[1];
-    const hour = parseInt(timePart.split(':')[0], 10);
-    
+    const hour = parseInt(parts[1].split(':')[0], 10);
     if (hour >= 22) {
         const nextDay = new Date(now);
         nextDay.setDate(nextDay.getDate() + 1);
@@ -35,48 +56,47 @@ const getEffectiveMarketDate = () => {
 const parseResponse = (text: string): ParlayRecommendation[] => {
     try {
         const jsonString = cleanJsonText(text);
+        if (jsonString === "{}" || jsonString === "[]") return [];
+        
         const parsed = JSON.parse(jsonString);
+        
+        // Handle cases where recommendations might be wrapped differently or be the root array
+        const recs = Array.isArray(parsed) ? parsed : (parsed.recommendations || parsed.parlays || parsed.picks || []);
+        if (!Array.isArray(recs)) return [];
 
-        if (!parsed.recommendations || !Array.isArray(parsed.recommendations)) return [];
-
-        return parsed.recommendations.map((rec: any, index: number) => {
+        return recs.map((rec: any, index: number) => {
             const mappedLegs = (rec.legs || [])
-                .filter((leg: any) => leg.playerName && leg.line && leg.statType)
+                .filter((leg: any) => leg.playerName && leg.line)
                 .map((leg: any) => ({
                     playerId: leg.playerId || `p-${Date.now()}-${Math.random()}`,
                     playerName: leg.playerName,
                     team: leg.team || "N/A",
                     opponent: leg.opponent || "N/A",
                     statType: leg.statType || "Prop",
-                    category: leg.category || (leg.isAltLine ? "Alternate" : "Primary"),
-                    isAltLine: !!leg.isAltLine,
+                    category: leg.category || "Primary",
                     line: Number(leg.line),
                     prediction: leg.prediction || "Over",
                     bookOdds: Number(leg.bookOdds) || -110,
                     modelProb: Number(leg.modelProb) || 0.5,
                     edge: Number(leg.edge) || 0,
-                    rationale: leg.rationale || "Verified via live market scan.",
+                    rationale: leg.rationale || "Analytical edge detected.",
                     injuryStatus: leg.injuryStatus || "Active",
-                    leagueAvg: Number(leg.leagueAvg) || 0,
-                    recentHitRate: leg.recentHitRate || "N/A",
                     recentGames: (leg.recentGames || []).map((g: any) => ({
                         date: g.date || "N/A",
                         opponent: g.opponent || "N/A",
                         value: Number(g.value),
-                        minutes: Number(g.minutes) || 0,
                         hit: !!g.hit
                     })),
-                    x10: Number(leg.x10) || 0,
-                    x20: Number(leg.x20) || 0,
-                    xSeason: Number(leg.xSeason) || 0,
-                    sigma: Number(leg.sigma) || 1,
+                    x10: Number(leg.x10) || Number(leg.line),
+                    x20: Number(leg.x20) || Number(leg.line),
+                    xSeason: Number(leg.xSeason) || Number(leg.line),
+                    sigma: Number(leg.sigma) || (Number(leg.line) * 0.2),
                     expectedMins: Number(leg.expectedMins) || 30,
                     avgMins: Number(leg.avgMins) || 30,
                     expectedPace: Number(leg.expectedPace) || 100,
                     leaguePace: Number(leg.leaguePace) || 100,
                     oppAllowed: Number(leg.oppAllowed) || 20,
-                    leagueAllowed: Number(leg.leagueAllowed) || 20,
-                    correlations: leg.correlations || []
+                    leagueAllowed: Number(leg.leagueAllowed) || 20
                 }));
 
             if (mappedLegs.length === 0) return null;
@@ -84,7 +104,7 @@ const parseResponse = (text: string): ParlayRecommendation[] => {
             return {
                 type: rec.type || 'player_profile',
                 id: rec.id || `profile-${Date.now()}-${index}`,
-                summary: rec.summary || "Quantitative ROI analysis complete.",
+                summary: rec.summary || "System Directive Issued.",
                 totalOdds: Number(rec.totalOdds) || 0,
                 jointProbAdjusted: Number(rec.jointProbAdjusted) || 0.5,
                 expectedValue: Number(rec.expectedValue) || 0,
@@ -96,7 +116,7 @@ const parseResponse = (text: string): ParlayRecommendation[] => {
             };
         }).filter((rec: any) => rec !== null);
     } catch (e) {
-        console.error("Parse Error:", e);
+        console.error("Critical JSON Parse Failure:", e);
         return [];
     }
 };
@@ -104,31 +124,18 @@ const parseResponse = (text: string): ParlayRecommendation[] => {
 export const fetchTrendingPicks = async (): Promise<ParlayRecommendation[]> => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const marketDate = getEffectiveMarketDate();
-
     const prompt = `
-      STRICT OPERATIONAL DIRECTIVE: IDENTIFY TOP 3 TRENDING PLAYER PROPS FOR ${marketDate}.
-      USE googleSearch TO FIND LIVE LINES ON: DraftKings, FanDuel, PrizePicks, Underdog.
+      AI ARCHITECT DIRECTIVE: IDENTIFY TOP 3 'LOCK-TIER' BETS FOR ${marketDate}.
+      SEARCH DraftKings/FanDuel/PrizePicks for live lines.
       
-      IMPORTANT: For each player, include the last 10 games for NBA and last 5 games for NFL/MLB in the "recentGames" array.
+      FOR EACH PICK:
+      1. Choose a side (OVER or UNDER) based on market edge.
+      2. MATH RATIONALE: "Line at X vs Model μ Y = ROI Edge Z%".
+      3. REQUIRED STATS: include "expectedMins", "avgMins", "expectedPace", "leaguePace", "oppAllowed", "leagueAllowed" numbers.
+      4. Include recent game history.
       
-      OUTPUT JSON STRUCTURE:
-      {
-        "recommendations": [
-          {
-            "type": "parlay",
-            "summary": "Verified High-EV Edge",
-            "legs": [
-              {
-                "playerName": "string", "team": "string", "opponent": "string", "statType": "string",
-                "line": number, "prediction": "Over", "bookOdds": number, "modelProb": number, "edge": number,
-                "recentGames": [{"date": "string", "opponent": "string", "value": number, "minutes": number, "hit": boolean}]
-              }
-            ]
-          }
-        ]
-      }
+      OUTPUT VALID JSON ONLY. NO MARKDOWN.
     `;
-
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
@@ -137,7 +144,6 @@ export const fetchTrendingPicks = async (): Promise<ParlayRecommendation[]> => {
         });
         return parseResponse(response.text || "");
     } catch (err) {
-        console.error("Trending Fetch Failed:", err);
         return [];
     }
 };
@@ -151,29 +157,41 @@ export const generateParlays = async (
 ): Promise<ParlayRecommendation[]> => {
     const marketDate = getEffectiveMarketDate();
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const modelId = "gemini-3-pro-preview";
+    
+    const filterContext = filters.trim() 
+      ? `targeting the player/team: "${filters}"` 
+      : `searching for the highest-edge Alpha Picks in the ${league} market right now`;
 
     const prompt = `
-      STRICT OPERATIONAL DIRECTIVE: EXHAUSTIVE MARKET SCAN FOR "${filters}" (${league}) ON ${marketDate}.
-      
-      TASK 1: USE googleSearch to find EVERY SINGLE LIVE PROP LINE for "${filters}" on books.
-      TASK 2: Include comprehensive game logs in "recentGames": 
-              - FOR NBA: Provide the last 10 games.
-              - FOR NFL/MLB: Provide the last 5 games.
-      
-      OUTPUT JSON STRUCTURE:
+      EXECUTE FULL MARKET SCAN ${filterContext} ON ${marketDate} (${league}).
+      DO NOT BE PASSIVE. ISSUE A MATHEMATICAL DIRECTIVE.
+
+      CORE INSTRUCTIONS:
+      1. If searching for a specific player/team ("${filters}") yields no live lines, IGNORE THAT FILTER and return the top 3 players in the ${league} with the largest mathematical discrepancy.
+      2. You MUST provide: "playerName", "team", "line", "prediction" (Over/Under), "bookOdds", "modelProb", "edge", "rationale".
+      3. TECHNICAL PARAMS REQUIRED for the engine breakdown:
+         - "expectedMins": number (projected mins today)
+         - "avgMins": number (season average mins)
+         - "expectedPace": number (this game's projected pace)
+         - "leaguePace": number (league average pace)
+         - "oppAllowed": number (stat allowed by opponent vs this position)
+         - "leagueAllowed": number (league average stat allowed by all teams)
+         - "x10", "x20", "xSeason": numbers (recent averages)
+      4. MATH JUSTIFICATION: Compare Book Line (L) to your Projected Mean (μ).
+
+      OUTPUT FORMAT: STRICT JSON.
       {
         "recommendations": [
           {
-            "type": "player_profile",
-            "summary": "Deep-dive live market analysis for ${filters}",
+            "summary": "SYSTEM VERDICT: AGGRESSIVE ALPHA DETECTED",
             "legs": [
               {
-                "playerName": "string", "team": "string", "opponent": "string", "statType": "string",
-                "line": number, "prediction": "Over" | "Under", "bookOdds": number, 
-                "recentGames": [ { "date": "string", "opponent": "string", "value": number, "minutes": number, "hit": boolean } ],
-                "rationale": "DEF: #Rank, PACE: Diff, HIT: X/5",
-                "leagueAvg": number
+                "playerName": "string", "team": "string", "line": number, "prediction": "Over" | "Under",
+                "bookOdds": number, "modelProb": number, "edge": number,
+                "rationale": "MATH: Line X vs μ Y. Divergence Z...",
+                "expectedMins": number, "avgMins": number, "expectedPace": number, "leaguePace": number,
+                "oppAllowed": number, "leagueAllowed": number,
+                "recentGames": [{"date": "string", "value": number, "hit": boolean}]
               }
             ]
           }
@@ -183,62 +201,27 @@ export const generateParlays = async (
 
     try {
         const response = await ai.models.generateContent({
-            model: modelId,
+            model: 'gemini-3-pro-preview',
             contents: prompt,
             config: { tools: [{ googleSearch: {} }], temperature: 0.1 }
         });
-        return parseResponse(response.text || "");
+        const results = parseResponse(response.text || "");
+        return results;
     } catch (err) {
-        console.error("Analysis Failed:", err);
-        throw new Error("The analytical bridge encountered an error while scanning the market.");
+        throw new Error("The mathematical bridge to the market was interrupted. Retry connection.");
     }
 };
 
-// Fix: Exported fetchGroundedOutcomes to satisfy App.tsx import.
-/**
- * Fetches recent actual betting outcomes for a given league using Google Search grounding.
- * This function provides the "Grounded Outcomes" data shown in the History tab.
- */
 export const fetchGroundedOutcomes = async (league: League): Promise<any[]> => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = `Search for and provide 5 recent actual completed player prop betting outcomes for ${league}.
-    Return a strict JSON object with an 'outcomes' key.
-    Each outcome object must include: id (unique), date (MM/DD), outcome ("WIN" or "LOSS"), player, opponent, prop, result (final stat), and odds (American).
-    Format Example:
-    {
-      "outcomes": [
-        {
-          "id": "uuid-123",
-          "date": "Oct 25",
-          "outcome": "WIN",
-          "player": "LeBron James",
-          "opponent": "Kings",
-          "prop": "Over 24.5 Pts",
-          "result": "32",
-          "odds": "-110"
-        }
-      ]
-    }`;
-
+    const prompt = `Search for 5 recent prop betting outcomes for ${league}. Return JSON with 'outcomes' array.`;
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
             contents: prompt,
-            config: { 
-                tools: [{ googleSearch: {} }], 
-                temperature: 0.1,
-                responseMimeType: "application/json"
-            }
+            config: { tools: [{ googleSearch: {} }], temperature: 0.1, responseMimeType: "application/json" }
         });
-        
-        const text = response.text || "";
-        const parsed = JSON.parse(cleanJsonText(text));
-        return (parsed.outcomes || []).map((o: any) => ({
-            ...o,
-            id: o.id || `outcome-${Math.random().toString(36).substr(2, 9)}`
-        }));
-    } catch (err) {
-        console.error("Grounded Outcomes Sync Failed:", err);
-        return [];
-    }
+        const parsed = JSON.parse(cleanJsonText(response.text || ""));
+        return (parsed.outcomes || []).map((o: any) => ({ ...o, id: o.id || Math.random() }));
+    } catch (err) { return []; }
 };
