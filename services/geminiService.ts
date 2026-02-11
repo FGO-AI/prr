@@ -128,6 +128,12 @@ export const fetchTrendingPicks = async (): Promise<ParlayRecommendation[]> => {
       AI ARCHITECT DIRECTIVE: IDENTIFY TOP 3 'LOCK-TIER' BETS FOR ${marketDate}.
       SEARCH DraftKings/FanDuel/PrizePicks for live lines.
       
+      DIVERSITY REQUIREMENT:
+      - You MUST return 3 UNIQUE players.
+      - Each player MUST be from a DIFFERENT team.
+      - DO NOT return the same superstar multiple times. 
+      - Look for high-edge props in mid-tier players if superstars lack value.
+      
       FOR EACH PICK:
       1. Choose a side (OVER or UNDER) based on market edge.
       2. MATH RATIONALE: "Line at X vs Model μ Y = ROI Edge Z%".
@@ -140,7 +146,7 @@ export const fetchTrendingPicks = async (): Promise<ParlayRecommendation[]> => {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
             contents: prompt,
-            config: { tools: [{ googleSearch: {} }], temperature: 0.1 }
+            config: { tools: [{ googleSearch: {} }], temperature: 0.2 }
         });
         return parseResponse(response.text || "");
     } catch (err) {
@@ -160,16 +166,19 @@ export const generateParlays = async (
     
     const filterContext = filters.trim() 
       ? `targeting the player/team: "${filters}"` 
-      : `searching for the highest-edge Alpha Picks in the ${league} market right now`;
+      : `searching for the highest-edge Alpha Picks in the ${league} market right now across the ENTIRE board`;
 
     const prompt = `
       EXECUTE FULL MARKET SCAN ${filterContext} ON ${marketDate} (${league}).
       DO NOT BE PASSIVE. ISSUE A MATHEMATICAL DIRECTIVE.
 
       CORE INSTRUCTIONS:
-      1. If searching for a specific player/team ("${filters}") yields no live lines, IGNORE THAT FILTER and return the top 3 players in the ${league} with the largest mathematical discrepancy.
-      2. You MUST provide: "playerName", "team", "line", "prediction" (Over/Under), "bookOdds", "modelProb", "edge", "rationale".
-      3. TECHNICAL PARAMS REQUIRED for the engine breakdown:
+      1. DIVERSITY PROTOCOL: When scanning the general market (no specific player filter), you MUST find a variety of players. 
+         Avoid repeating the same 2-3 superstars. 
+         Identify at least 3 DIFFERENT players from DIFFERENT teams.
+      2. If searching for a specific player/team ("${filters}") yields no live lines, IGNORE THAT FILTER and return the top 3 players in the ${league} with the largest mathematical discrepancy, ensuring they are UNIQUE players.
+      3. You MUST provide: "playerName", "team", "line", "prediction" (Over/Under), "bookOdds", "modelProb", "edge", "rationale".
+      4. TECHNICAL PARAMS REQUIRED for the engine breakdown:
          - "expectedMins": number (projected mins today)
          - "avgMins": number (season average mins)
          - "expectedPace": number (this game's projected pace)
@@ -177,7 +186,7 @@ export const generateParlays = async (
          - "oppAllowed": number (stat allowed by opponent vs this position)
          - "leagueAllowed": number (league average stat allowed by all teams)
          - "x10", "x20", "xSeason": numbers (recent averages)
-      4. MATH JUSTIFICATION: Compare Book Line (L) to your Projected Mean (μ).
+      5. MATH JUSTIFICATION: Compare Book Line (L) to your Projected Mean (μ).
 
       OUTPUT FORMAT: STRICT JSON.
       {
@@ -203,7 +212,7 @@ export const generateParlays = async (
         const response = await ai.models.generateContent({
             model: 'gemini-3-pro-preview',
             contents: prompt,
-            config: { tools: [{ googleSearch: {} }], temperature: 0.1 }
+            config: { tools: [{ googleSearch: {} }], temperature: 0.3 }
         });
         const results = parseResponse(response.text || "");
         return results;

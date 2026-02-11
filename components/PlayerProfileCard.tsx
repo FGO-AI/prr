@@ -98,7 +98,7 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data, bank
                 <div className="flex items-center gap-3">
                     <div className={`w-3 h-3 rounded-full bg-${sideColor}-500 ${isRecalculating ? 'animate-ping' : 'animate-pulse'}`}></div>
                     <span className={`text-[11px] font-black text-${sideColor}-400 uppercase tracking-[0.25em] font-mono`}>
-                        SYSTEM VERDICT: {customPrediction.toUpperCase()} {customLine} @ {customOdds > 0 ? '+' : ''}{customOdds}
+                        VERDICT: {leg.statType.toUpperCase()} {customPrediction.toUpperCase()} {customLine} @ {customOdds > 0 ? '+' : ''}{customOdds}
                     </span>
                 </div>
                 <div className="flex items-center gap-4">
@@ -172,7 +172,7 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data, bank
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <label className="text-[9px] text-gray-600 uppercase font-mono font-bold tracking-widest flex justify-between">
-                                            Market Line
+                                            {leg.statType} Line
                                         </label>
                                         <input 
                                             type="number" 
@@ -214,7 +214,7 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data, bank
                             </div>
                             <div className="space-y-4 font-mono text-[11px]">
                                 <div className="flex justify-between items-center group">
-                                    <span className="text-gray-500 group-hover:text-gray-400 transition-colors">Projected Mean (μ):</span>
+                                    <span className="text-gray-500 group-hover:text-gray-400 transition-colors">Projected {leg.statType} (μ):</span>
                                     <span className="text-emerald-400 font-bold text-lg">{metrics.muFinal.toFixed(2)}</span>
                                 </div>
                                 <div className="flex justify-between items-center group">
@@ -281,7 +281,7 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data, bank
                                 <div>
                                     <p className="text-[11px] text-gray-400 leading-relaxed">
                                         <span className="text-emerald-400 font-bold uppercase tracking-widest mr-2">Model Architect:</span> 
-                                        Utilizing the <span className="text-white font-bold">{metrics.modelUsed}</span> distribution, we have identified a high-probability divergence. Our mean of <span className="text-white font-bold">{metrics.muFinal.toFixed(1)}</span> accounts for situational pace volatility (σ={metrics.sigmaFinal.toFixed(1)}), creating a <span className={`font-bold ${metrics.edge > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                        Utilizing the <span className="text-white font-bold">{metrics.modelUsed}</span> distribution, we have identified a high-probability divergence in the <span className="text-white font-bold">{leg.statType}</span> market. Our mean of <span className="text-white font-bold">{metrics.muFinal.toFixed(1)}</span> accounts for situational pace volatility (σ={metrics.sigmaFinal.toFixed(1)}), creating a <span className={`font-bold ${metrics.edge > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                                             {metrics.edge > 0 ? '+' : ''}{metrics.edge.toFixed(1)}% ROI edge
                                         </span> against current market pricing.
                                     </p>
