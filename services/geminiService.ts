@@ -4,7 +4,6 @@ import { League, RiskLevel, ParlayRecommendation, BetLeg, GameLogEntry } from ".
 
 const cleanJsonText = (text: string): string => {
     if (!text) return "{}";
-    // Remove potential markdown code block markers
     let cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim();
     
     try {
@@ -13,7 +12,6 @@ const cleanJsonText = (text: string): string => {
         const firstBracket = cleaned.indexOf('[');
         const lastBracket = cleaned.lastIndexOf(']');
 
-        // Determine if we are looking for an object or an array as the root
         let start = -1;
         let end = -1;
 
@@ -26,14 +24,9 @@ const cleanJsonText = (text: string): string => {
         }
 
         if (start === -1 || end === -1) return "{}";
-        
         cleaned = cleaned.substring(start, end + 1);
-        
-        // Remove trailing commas which break standard JSON.parse
         cleaned = cleaned.replace(/,\s*([\]}])/g, '$1');
-        // Simple comment removal (lines starting with //)
         cleaned = cleaned.replace(/^\s*\/\/.*$/gm, '');
-        
         return cleaned;
     } catch (e) {
         return "{}";
@@ -42,15 +35,7 @@ const cleanJsonText = (text: string): string => {
 
 const getEffectiveMarketDate = () => {
     const now = new Date();
-    const mtStr = now.toLocaleString("en-US", { timeZone: "America/Denver", hour12: false });
-    const parts = mtStr.split(', ');
-    const hour = parseInt(parts[1].split(':')[0], 10);
-    if (hour >= 22) {
-        const nextDay = new Date(now);
-        nextDay.setDate(nextDay.getDate() + 1);
-        return nextDay.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-    }
-    return now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    return now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 };
 
 const parseResponse = (text: string): ParlayRecommendation[] => {
@@ -59,8 +44,6 @@ const parseResponse = (text: string): ParlayRecommendation[] => {
         if (jsonString === "{}" || jsonString === "[]") return [];
         
         const parsed = JSON.parse(jsonString);
-        
-        // Handle cases where recommendations might be wrapped differently or be the root array
         const recs = Array.isArray(parsed) ? parsed : (parsed.recommendations || parsed.parlays || parsed.picks || []);
         if (!Array.isArray(recs)) return [];
 
@@ -116,7 +99,6 @@ const parseResponse = (text: string): ParlayRecommendation[] => {
             };
         }).filter((rec: any) => rec !== null);
     } catch (e) {
-        console.error("Critical JSON Parse Failure:", e);
         return [];
     }
 };
@@ -125,22 +107,14 @@ export const fetchTrendingPicks = async (): Promise<ParlayRecommendation[]> => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const marketDate = getEffectiveMarketDate();
     const prompt = `
-      AI ARCHITECT DIRECTIVE: IDENTIFY TOP 3 'LOCK-TIER' BETS FOR ${marketDate}.
-      SEARCH DraftKings/FanDuel/PrizePicks for live lines.
+      AI ARCHITECT DIRECTIVE: 
+      1. SEARCH Google for "${marketDate} NBA player prop lines FanDuel DraftKings" and "${marketDate} NBA injury reports".
+      2. IDENTIFY 3 UNIQUE players with the highest mathematical edge.
+      3. DIVERSITY: You MUST pick players from DIFFERENT teams.
+      4. SIDE-BALANCE: You MUST provide a mix of OVER and UNDER recommendations. Do not return all Overs.
+      5. Include specific stats: Points, Rebounds, Assists, etc.
       
-      DIVERSITY REQUIREMENT:
-      - You MUST return 3 UNIQUE players.
-      - Each player MUST be from a DIFFERENT team.
-      - DO NOT return the same superstar multiple times. 
-      - Look for high-edge props in mid-tier players if superstars lack value.
-      
-      FOR EACH PICK:
-      1. Choose a side (OVER or UNDER) based on market edge.
-      2. MATH RATIONALE: "Line at X vs Model μ Y = ROI Edge Z%".
-      3. REQUIRED STATS: include "expectedMins", "avgMins", "expectedPace", "leaguePace", "oppAllowed", "leagueAllowed" numbers.
-      4. Include recent game history.
-      
-      OUTPUT VALID JSON ONLY. NO MARKDOWN.
+      OUTPUT VALID JSON.
     `;
     try {
         const response = await ai.models.generateContent({
@@ -165,47 +139,39 @@ export const generateParlays = async (
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     const filterContext = filters.trim() 
-      ? `targeting the player/team: "${filters}"` 
-      : `searching for the highest-edge Alpha Picks in the ${league} market right now across the ENTIRE board`;
+      ? `specifically for player/team "${filters}"` 
+      : `for the entire ${league} board`;
 
     const prompt = `
-      EXECUTE FULL MARKET SCAN ${filterContext} ON ${marketDate} (${league}).
-      DO NOT BE PASSIVE. ISSUE A MATHEMATICAL DIRECTIVE.
-
-      CORE INSTRUCTIONS:
-      1. DIVERSITY PROTOCOL: When scanning the general market (no specific player filter), you MUST find a variety of players. 
-         Avoid repeating the same 2-3 superstars. 
-         Identify at least 3 DIFFERENT players from DIFFERENT teams.
-      2. If searching for a specific player/team ("${filters}") yields no live lines, IGNORE THAT FILTER and return the top 3 players in the ${league} with the largest mathematical discrepancy, ensuring they are UNIQUE players.
-      3. You MUST provide: "playerName", "team", "line", "prediction" (Over/Under), "bookOdds", "modelProb", "edge", "rationale".
-      4. TECHNICAL PARAMS REQUIRED for the engine breakdown:
-         - "expectedMins": number (projected mins today)
-         - "avgMins": number (season average mins)
-         - "expectedPace": number (this game's projected pace)
-         - "leaguePace": number (league average pace)
-         - "oppAllowed": number (stat allowed by opponent vs this position)
-         - "leagueAllowed": number (league average stat allowed by all teams)
-         - "x10", "x20", "xSeason": numbers (recent averages)
-      5. MATH JUSTIFICATION: Compare Book Line (L) to your Projected Mean (μ).
-
-      OUTPUT FORMAT: STRICT JSON.
+      URGENT MARKET SCAN: Find live player prop lines ${filterContext} for today ${marketDate}.
+      
+      SEARCH REQUIREMENTS:
+      - Use Google Search to find current lines on FanDuel, DraftKings, PrizePicks, or Underdog.
+      - If searching for a specific name ("${filters}") yields no live lines, broaden your search to find ANY high-edge picks for ${league} today.
+      
+      CORE DIRECTIVES:
+      1. DIVERSITY: Do not repeat players. Return at least 3 UNIQUE players from 3 DIFFERENT teams.
+      2. SIDE-BALANCE: Return a healthy mix of both 'OVER' and 'UNDER' picks. 
+      3. UNDER-FOCUS: Actively search for 'UNDER' lines where the public has inflated the line.
+      4. CATEGORY: Explicitly specify if the stat is Points, Assists, Rebounds, 3PM, etc.
+      
+      DATA SCHEMA:
       {
         "recommendations": [
           {
-            "summary": "SYSTEM VERDICT: AGGRESSIVE ALPHA DETECTED",
             "legs": [
               {
-                "playerName": "string", "team": "string", "line": number, "prediction": "Over" | "Under",
-                "bookOdds": number, "modelProb": number, "edge": number,
-                "rationale": "MATH: Line X vs μ Y. Divergence Z...",
+                "playerName": "string", "team": "string", "line": number, "statType": "string", "prediction": "Over" | "Under",
+                "bookOdds": number, "modelProb": number, "edge": number, "rationale": "string",
                 "expectedMins": number, "avgMins": number, "expectedPace": number, "leaguePace": number,
-                "oppAllowed": number, "leagueAllowed": number,
-                "recentGames": [{"date": "string", "value": number, "hit": boolean}]
+                "oppAllowed": number, "leagueAllowed": number, "x10": number, "x20": number, "xSeason": number
               }
             ]
           }
         ]
       }
+      
+      OUTPUT STRICT JSON.
     `;
 
     try {
@@ -214,16 +180,15 @@ export const generateParlays = async (
             contents: prompt,
             config: { tools: [{ googleSearch: {} }], temperature: 0.3 }
         });
-        const results = parseResponse(response.text || "");
-        return results;
+        return parseResponse(response.text || "");
     } catch (err) {
-        throw new Error("The mathematical bridge to the market was interrupted. Retry connection.");
+        throw new Error("Market sync failed. The books might be locked for game-time or search grounding is timing out.");
     }
 };
 
 export const fetchGroundedOutcomes = async (league: League): Promise<any[]> => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = `Search for 5 recent prop betting outcomes for ${league}. Return JSON with 'outcomes' array.`;
+    const prompt = `Search for 5 recent ${league} prop betting results. JSON: { 'outcomes': [] }`;
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',

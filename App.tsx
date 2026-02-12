@@ -14,7 +14,7 @@ import { calculateEngineMetrics } from './services/projectionEngine';
 import { 
   BarChart3, ShieldAlert, Home, Zap, User, RefreshCw, 
   Target, TrendingUp, Trophy, HistoryIcon, CheckCircle2, XCircle, ListIcon, Clock, Calendar, GitMerge, Timer,
-  Search, Plus, Trash2, Cpu, ArrowRight, BrainCircuit, X, Settings2, AlertCircle
+  Search, Plus, Trash2, Cpu, ArrowRight, BrainCircuit, X, Settings2, AlertCircle, Globe
 } from './components/Icons';
 
 type ViewState = 'landing' | 'signup' | 'login' | 'app' | 'about' | 'access';
@@ -49,7 +49,9 @@ function App() {
     const getTrending = async () => {
         try {
             const picks = await fetchTrendingPicks();
-            setTrendingPicks(picks);
+            if (picks && picks.length > 0) {
+              setTrendingPicks(picks);
+            }
         } catch (err) { console.error(err); }
     };
     getTrending();
@@ -83,10 +85,9 @@ function App() {
     try {
       const results = await generateParlays(params.league, params.riskLevel, params.filters, params.statType, params.advancedMetric);
       
-      if (results.length === 0) {
-          setError(`MARKET STATUS: No active lines found. The books may be offline or between games.`);
+      if (!results || results.length === 0) {
+          setError(`MARKET STATUS: No active lines found. The AI couldn't locate verified props on FanDuel or DraftKings for this specific query.`);
       } else {
-          // Detect if the AI results match the search or if it's a fallback
           const searchTerm = params.filters.toLowerCase().trim();
           const matchesSearch = searchTerm === '' || results.some(r => 
             r.legs.some(l => 
@@ -105,6 +106,11 @@ function App() {
     } finally { 
       setIsLoading(false); 
     }
+  };
+
+  const forceGlobalScan = () => {
+    setFormData(prev => ({ ...prev, filters: '' }));
+    handleGenerate(false, { ...formData, filters: '' });
   };
 
   if (currentView === 'landing') return <LandingPage onEnter={() => setCurrentView('signup')} trendingPicks={trendingPicks} onAbout={() => setCurrentView('about')} hasActiveSession={recommendations.length > 0} onResume={() => setCurrentView('app')} />;
@@ -170,14 +176,23 @@ function App() {
 
             <div className="space-y-6">
               {error && (
-                <div className="bg-gray-900/80 border border-gray-800 text-gray-400 p-6 sm:p-8 rounded-xl flex flex-col items-center text-center gap-4 animate-fadeIn">
-                  <ShieldAlert size={32} className="text-amber-500" />
+                <div className="bg-gray-900/80 border border-gray-800 text-gray-400 p-6 sm:p-12 rounded-2xl flex flex-col items-center text-center gap-6 animate-fadeIn">
+                  <div className="p-4 bg-amber-500/10 rounded-full border border-amber-500/20">
+                    <ShieldAlert size={36} className="text-amber-500" />
+                  </div>
                   <div>
-                    <p className="font-bold text-base mb-1 text-white uppercase tracking-tight">Market Status Check</p>
-                    <p className="text-xs opacity-90 leading-relaxed max-w-xs mx-auto font-mono">{error}</p>
-                    <button onClick={() => handleGenerate(false)} className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-gray-950 rounded-lg text-[10px] font-bold uppercase tracking-widest mt-6 mx-auto flex items-center gap-2">
-                        <RefreshCw size={12} /> Retry Discovery
-                    </button>
+                    <h3 className="font-bold text-lg mb-2 text-white uppercase tracking-tight">Zero Active Lines Identified</h3>
+                    <p className="text-sm opacity-80 leading-relaxed max-w-md mx-auto font-sans mb-8">
+                      {error} <br/> The books may have locked lines for ongoing games, or the model is struggling to ground live odds.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                        <button onClick={() => handleGenerate(false)} className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-gray-950 rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20">
+                            <RefreshCw size={14} /> Retry Acquisition
+                        </button>
+                        <button onClick={forceGlobalScan} className="px-6 py-3 bg-gray-800 hover:bg-gray-700 text-white border border-gray-700 rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2">
+                            <Globe size={14} /> Force Global Scan
+                        </button>
+                    </div>
                   </div>
                 </div>
               )}
