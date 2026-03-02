@@ -1,9 +1,10 @@
 
 import React, { useState } from 'react';
 import { User, Mail, Lock, ArrowRight, ShieldAlert, CheckCircle2, Zap, Shield } from './Icons';
+import { User as UserType } from '../types';
 
 interface SignUpPageProps {
-  onComplete: () => void;
+  onComplete: (user: UserType) => void;
   onLogin: () => void;
   onGuest: () => void;
 }
@@ -50,7 +51,12 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onComplete, onLogin, onG
     setIsLoading(true);
     setTimeout(() => {
       setIsLoading(false);
-      onComplete();
+      onComplete({
+        id: `user-${Date.now()}`,
+        email: formData.email,
+        name: formData.name,
+        type: 'email'
+      });
     }, 1500);
   };
 

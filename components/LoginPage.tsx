@@ -1,9 +1,10 @@
 
 import React, { useState } from 'react';
 import { Mail, Lock, ArrowRight, ShieldAlert, CheckCircle2, Zap, BrainCircuit, RefreshCw } from './Icons';
+import { User as UserType } from '../types';
 
 interface LoginPageProps {
-  onComplete: () => void;
+  onComplete: (user: UserType) => void;
   onSignUp: () => void;
   onAccess?: () => void;
 }
@@ -37,7 +38,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onComplete, onSignUp, onAc
     // Simulate Authentication
     setTimeout(() => {
       setIsLoading(false);
-      onComplete();
+      onComplete({
+        id: `user-${Date.now()}`,
+        email: formData.email,
+        name: formData.email.split('@')[0],
+        type: 'email'
+      });
     }, 1200);
   };
 

@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
-import { generateParlays, fetchTrendingPicks, fetchGroundedOutcomes } from './services/geminiService';
-import { League, RiskLevel, UserInputState, ParlayRecommendation, BetLeg } from './types';
+import { generateParlays, fetchTrendingPicks, fetchGroundedOutcomes, settleUserPicks } from './services/geminiService';
+import { League, RiskLevel, UserInputState, ParlayRecommendation, BetLeg, User as UserType } from './types';
 import { InputForm } from './components/InputForm';
 import { PlayerProfileCard } from './components/PlayerProfileCard';
 import { LoadingScreen } from './components/LoadingScreen';
@@ -14,7 +14,7 @@ import { calculateEngineMetrics } from './services/projectionEngine';
 import { 
   BarChart3, ShieldAlert, Home, Zap, User, RefreshCw, 
   Target, TrendingUp, Trophy, HistoryIcon, CheckCircle2, XCircle, ListIcon, Clock, Calendar, GitMerge, Timer,
-  Search, Plus, Trash2, Cpu, ArrowRight, BrainCircuit, X, Settings2, AlertCircle, Globe
+  Search, Plus, Trash2, Cpu, ArrowRight, BrainCircuit, X, Settings2, AlertCircle, Globe, Shield
 } from './components/Icons';
 
 type ViewState = 'landing' | 'signup' | 'login' | 'app' | 'about' | 'access';
@@ -22,17 +22,18 @@ type AppTab = 'search' | 'parlays' | 'history';
 
 function App() {
   const [currentView, setCurrentView] = useState<ViewState>('landing');
+  const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>('search');
   const [historyLeague, setHistoryLeague] = useState<League>(League.NBA);
-  const [constructorLeague, setConstructorLeague] = useState<League>(League.NBA);
   const [isLoading, setIsLoading] = useState(false);
-  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [isBackgroundLoading, setIsBackgroundLoading] = useState(false);
+  const [isSettling, setIsSettling] = useState(false);
   
   const [recommendations, setRecommendations] = useState<ParlayRecommendation[]>([]);
+  const [userPickHistory, setUserPickHistory] = useState<ParlayRecommendation[]>([]);
   const [isFallbackActive, setIsFallbackActive] = useState(false);
 
   const [trendingPicks, setTrendingPicks] = useState<ParlayRecommendation[]>([]);
-  const [groundedHistory, setGroundedHistory] = useState<any[]>([]);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   
@@ -44,6 +45,33 @@ function App() {
     statType: 'Any',
     advancedMetric: 'Standard'
   });
+
+  // Load history from localStorage based on user
+  useEffect(() => {
+    if (currentUser) {
+      const storageKey = `user_pick_history_${currentUser.id}`;
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          setUserPickHistory(JSON.parse(saved));
+        } catch (e) {
+          console.error("Failed to load history", e);
+        }
+      } else {
+        setUserPickHistory([]);
+      }
+    }
+  }, [currentUser]);
+
+  // Background generation every 5 minutes
+  useEffect(() => {
+    if (currentUser && currentView === 'app') {
+      const interval = setInterval(() => {
+        handleGenerate(true);
+      }, 300000); // 5 minutes
+      return () => clearInterval(interval);
+    }
+  }, [currentUser, currentView, formData]);
 
   useEffect(() => {
     const getTrending = async () => {
@@ -57,22 +85,9 @@ function App() {
     getTrending();
   }, []);
 
-  useEffect(() => {
-    let ignore = false;
-    const loadGroundedHistory = async (league: League) => {
-      setIsHistoryLoading(true);
-      setGroundedHistory([]);
-      try {
-        const outcomes = await fetchGroundedOutcomes(league);
-        if (!ignore) setGroundedHistory(outcomes);
-      } catch (err) { console.error(err); } finally { if (!ignore) setIsHistoryLoading(false); }
-    };
-    if (activeTab === 'history') loadGroundedHistory(historyLeague);
-    return () => { ignore = true; };
-  }, [activeTab, historyLeague]);
-
   const handleGenerate = async (isBackground = false, overrideParams?: UserInputState) => {
-    setIsLoading(true);
+    if (!isBackground) setIsLoading(true);
+    else setIsBackgroundLoading(true);
     setError(null);
     setIsFallbackActive(false);
     
@@ -97,14 +112,49 @@ function App() {
           );
 
           setIsFallbackActive(!matchesSearch && searchTerm !== '');
-          setRecommendations(results);
+          
+          const taggedResults = results.map(r => ({ ...r, isUserGenerated: true }));
+          setRecommendations(taggedResults);
+          
+          // Save to local history
+          const newHistory = [...taggedResults, ...userPickHistory].slice(0, 50);
+          setUserPickHistory(newHistory);
+          if (currentUser) {
+            localStorage.setItem(`user_pick_history_${currentUser.id}`, JSON.stringify(newHistory));
+          }
+          
           setLastSyncTime(new Date());
           setError(null);
       }
     } catch (err: any) { 
       setError(err.message || "Error scanning market. Connection timed out."); 
     } finally { 
-      setIsLoading(false); 
+      if (!isBackground) setIsLoading(false); 
+      else setIsBackgroundLoading(false);
+    }
+  };
+
+  const handleVerifyHistory = async () => {
+    setIsSettling(true);
+    try {
+      const pendingPicks = userPickHistory.filter(p => p.legs.some(l => !l.settledStatus || l.settledStatus === 'Pending'));
+      if (pendingPicks.length === 0) return;
+
+      const settled = await settleUserPicks(pendingPicks);
+      
+      const updatedHistory = userPickHistory.map(oldPick => {
+        const found = settled.find(s => s.id === oldPick.id);
+        return found || oldPick;
+      });
+
+      setUserPickHistory(updatedHistory);
+      if (currentUser) {
+        localStorage.setItem(`user_pick_history_${currentUser.id}`, JSON.stringify(updatedHistory));
+      }
+    } catch (e) {
+      console.error("Verification failed", e);
+    } finally {
+      setIsSettling(false);
     }
   };
 
@@ -113,11 +163,25 @@ function App() {
     handleGenerate(false, { ...formData, filters: '' });
   };
 
+  const clearHistory = () => {
+    if (confirm("Purge historical pick archive?")) {
+      setUserPickHistory([]);
+      if (currentUser) {
+        localStorage.removeItem(`user_pick_history_${currentUser.id}`);
+      }
+    }
+  };
+
+  const handleAuthComplete = (user: UserType) => {
+    setCurrentUser(user);
+    setCurrentView('app');
+  };
+
   if (currentView === 'landing') return <LandingPage onEnter={() => setCurrentView('signup')} trendingPicks={trendingPicks} onAbout={() => setCurrentView('about')} hasActiveSession={recommendations.length > 0} onResume={() => setCurrentView('app')} />;
-  if (currentView === 'access') return <AccessCodePage onComplete={() => setCurrentView('app')} onLogin={() => setCurrentView('login')} />;
+  if (currentView === 'access') return <AccessCodePage onComplete={handleAuthComplete} onLogin={() => setCurrentView('login')} />;
   if (currentView === 'about') return <AboutPage onBack={() => setCurrentView('landing')} onStart={() => setCurrentView('signup')} />;
-  if (currentView === 'signup') return <SignUpPage onComplete={() => setCurrentView('app')} onLogin={() => setCurrentView('login')} onGuest={() => setCurrentView('access')} />;
-  if (currentView === 'login') return <LoginPage onComplete={() => setCurrentView('app')} onSignUp={() => setCurrentView('signup')} onAccess={() => setCurrentView('access')} />;
+  if (currentView === 'signup') return <SignUpPage onComplete={handleAuthComplete} onLogin={() => setCurrentView('login')} onGuest={() => setCurrentView('access')} />;
+  if (currentView === 'login') return <LoginPage onComplete={handleAuthComplete} onSignUp={() => setCurrentView('signup')} onAccess={() => setCurrentView('access')} />;
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-200 font-sans selection:bg-emerald-500/30 overflow-x-hidden">
@@ -133,14 +197,22 @@ function App() {
             </div>
           </div>
           <div className="flex items-center gap-4 text-sm text-gray-400">
-             <button onClick={() => setCurrentView('landing')} className="flex items-center gap-2 p-2 sm:px-3 sm:py-1.5 rounded-lg hover:bg-gray-800 transition-all group">
+             {currentUser && (
+               <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700">
+                  <User size={12} className="text-emerald-500" />
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-gray-300">
+                    {currentUser.name || currentUser.email}
+                  </span>
+               </div>
+             )}
+             <button onClick={() => { setCurrentUser(null); setCurrentView('landing'); }} className="flex items-center gap-2 p-2 sm:px-3 sm:py-1.5 rounded-lg hover:bg-gray-800 transition-all group">
                 <Home size={16} className="text-gray-500 group-hover:text-emerald-400" />
                 <span className="hidden sm:inline font-mono text-[10px] uppercase tracking-wider text-gray-600 group-hover:text-gray-400">Exit</span>
              </button>
              <div className="h-4 w-px bg-gray-800"></div>
              <span className="flex items-center gap-2 text-emerald-400 font-medium font-mono text-[10px]">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div> 
-                <span className="hidden xs:inline uppercase">{new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} Sync</span>
+                <div className={`w-1.5 h-1.5 rounded-full ${isBackgroundLoading ? 'bg-blue-500 animate-ping' : 'bg-emerald-500 animate-pulse'}`}></div> 
+                <span className="hidden xs:inline uppercase">{isBackgroundLoading ? 'Background Sync' : `${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} Sync`}</span>
              </span>
           </div>
         </div>
@@ -217,10 +289,78 @@ function App() {
         )}
         
         {activeTab === 'history' && (
-           <div className="text-center py-20 border border-dashed border-gray-800 rounded-2xl bg-gray-900/20">
-              <Trophy size={32} className="text-gray-800 mx-auto mb-4" />
-              <h3 className="text-gray-600 font-bold text-xs tracking-[0.3em] uppercase">Historical Archive</h3>
-              <p className="text-[9px] text-gray-700 font-mono mt-2 uppercase">Syncing settled outcomes from market feed...</p>
+           <div className="space-y-6 animate-fadeIn">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-900/50 p-6 rounded-2xl border border-gray-800">
+                  <div>
+                    <h2 className="text-xl font-bold text-white tracking-tight uppercase flex items-center gap-3">
+                        <Trophy className="text-yellow-500" /> Settlement Archive
+                    </h2>
+                    <p className="text-xs text-gray-500 font-mono uppercase tracking-widest mt-1">Verified User Pick Outcomes</p>
+                  </div>
+                  <div className="flex gap-3">
+                      <button 
+                        onClick={handleVerifyHistory} 
+                        disabled={isSettling || userPickHistory.length === 0}
+                        className="px-5 py-2.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-500/20 transition-all flex items-center gap-2"
+                      >
+                         {isSettling ? <RefreshCw className="animate-spin" size={14} /> : <Shield size={14} />}
+                         {isSettling ? 'Verifying Results...' : 'Verify My History'}
+                      </button>
+                      <button onClick={clearHistory} className="px-3 py-2.5 bg-gray-800 text-gray-500 hover:text-rose-400 rounded-lg transition-all">
+                        <Trash2 size={16} />
+                      </button>
+                  </div>
+              </div>
+
+              <div className="space-y-4">
+                {userPickHistory.length > 0 ? (
+                  userPickHistory.map((pick, i) => (
+                    <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden hover:border-gray-700 transition-all group">
+                        <div className="p-4 bg-gray-950 flex justify-between items-center border-b border-gray-800">
+                           <div className="flex items-center gap-3">
+                               <Calendar size={14} className="text-gray-600" />
+                               <span className="text-[10px] font-mono text-gray-400 font-bold uppercase">Generated {new Date(pick.timestamp).toLocaleString()}</span>
+                           </div>
+                           <div className="flex items-center gap-2">
+                               <Shield className="text-emerald-500" size={12} />
+                               <span className="text-[8px] font-mono text-emerald-400 uppercase tracking-widest">Grounded Feed</span>
+                           </div>
+                        </div>
+                        <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                           {pick.legs.map((leg, j) => (
+                             <div key={j} className="flex items-center justify-between gap-4 p-4 bg-gray-850/50 rounded-xl border border-gray-800 group-hover:bg-gray-850/80 transition-all">
+                                <div className="flex items-center gap-4">
+                                   <div className={`w-10 h-10 rounded-lg bg-gray-950 flex items-center justify-center border ${leg.settledStatus === 'Hit' ? 'border-emerald-500' : leg.settledStatus === 'Miss' ? 'border-rose-500' : 'border-gray-800'}`}>
+                                      {leg.settledStatus === 'Hit' ? <CheckCircle2 className="text-emerald-500" size={24} /> : leg.settledStatus === 'Miss' ? <XCircle className="text-rose-500" size={24} /> : <User className="text-gray-700" size={24} />}
+                                   </div>
+                                   <div>
+                                      <div className="text-sm font-bold text-white">{leg.playerName}</div>
+                                      <div className="text-[10px] font-mono text-gray-500">
+                                        {leg.prediction.toUpperCase()} {leg.line} {leg.statType}
+                                      </div>
+                                   </div>
+                                </div>
+                                <div className="text-right">
+                                   <div className={`text-sm font-mono font-bold ${leg.settledStatus === 'Hit' ? 'text-emerald-400' : leg.settledStatus === 'Miss' ? 'text-rose-400' : 'text-gray-400'}`}>
+                                      {leg.settledStatus === 'Hit' ? 'VERIFIED HIT' : leg.settledStatus === 'Miss' ? 'SETTLED LOSS' : 'PENDING'}
+                                   </div>
+                                   {leg.actualValue !== undefined && (
+                                     <div className="text-[10px] text-gray-500 font-mono">Actual: {leg.actualValue}</div>
+                                   )}
+                                </div>
+                             </div>
+                           ))}
+                        </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-20 border border-dashed border-gray-800 rounded-2xl bg-gray-900/20">
+                    <HistoryIcon size={32} className="text-gray-800 mx-auto mb-4" />
+                    <h3 className="text-gray-600 font-bold text-xs tracking-[0.3em] uppercase">Archive Empty</h3>
+                    <p className="text-[9px] text-gray-700 font-mono mt-2 uppercase">Generate picks in Acquisition to build your ledger.</p>
+                  </div>
+                )}
+              </div>
            </div>
         )}
       </main>

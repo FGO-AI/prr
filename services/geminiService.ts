@@ -1,5 +1,5 @@
 
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { League, RiskLevel, ParlayRecommendation, BetLeg, GameLogEntry } from "../types";
 
 const cleanJsonText = (text: string): string => {
@@ -100,6 +100,72 @@ const parseResponse = (text: string): ParlayRecommendation[] => {
         }).filter((rec: any) => rec !== null);
     } catch (e) {
         return [];
+    }
+};
+
+export const settleUserPicks = async (recommendations: ParlayRecommendation[]): Promise<ParlayRecommendation[]> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const pickDescriptions = recommendations.flatMap(r => r.legs).map(l => 
+        `${l.playerName} ${l.statType} (Line: ${l.line}) on ${l.opponent}`
+    ).join(", ");
+
+    const prompt = `
+      SETTLEMENT AGENT DIRECTIVE:
+      Search for the ACTUAL game statistics for the following player props: ${pickDescriptions}.
+      Determine if each prop hit or missed based on the target line.
+      Return JSON only.
+      {
+        "settlements": [
+          { "playerName": "string", "actualValue": number, "status": "Hit" | "Miss" | "Void" | "Pending" }
+        ]
+      }
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt,
+            config: { 
+                tools: [{ googleSearch: {} }], 
+                temperature: 0.1,
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        settlements: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    playerName: { type: Type.STRING },
+                                    actualValue: { type: Type.NUMBER },
+                                    status: { type: Type.STRING }
+                                },
+                                required: ["playerName", "actualValue", "status"]
+                            }
+                        }
+                    },
+                    required: ["settlements"]
+                }
+            }
+        });
+        
+        const settlementData = JSON.parse(cleanJsonText(response.text || "{}"));
+        const settlements = settlementData.settlements || [];
+
+        return recommendations.map(rec => ({
+            ...rec,
+            legs: rec.legs.map(leg => {
+                const match = settlements.find((s: any) => s.playerName.toLowerCase().includes(leg.playerName.toLowerCase()));
+                if (match) {
+                    return { ...leg, actualValue: match.actualValue, settledStatus: match.status as any };
+                }
+                return leg;
+            })
+        }));
+    } catch (err) {
+        console.error("Settlement failed", err);
+        return recommendations;
     }
 };
 

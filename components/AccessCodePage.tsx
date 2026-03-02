@@ -1,9 +1,10 @@
 
 import React, { useState } from 'react';
 import { Shield, ArrowRight, ShieldAlert, RefreshCw, Zap, BrainCircuit } from './Icons';
+import { User as UserType } from '../types';
 
 interface AccessCodePageProps {
-  onComplete: () => void;
+  onComplete: (user: UserType) => void;
   onLogin: () => void;
 }
 
@@ -24,7 +25,11 @@ export const AccessCodePage: React.FC<AccessCodePageProps> = ({ onComplete, onLo
     setIsLoading(true);
     setTimeout(() => {
       setIsLoading(false);
-      onComplete();
+      onComplete({
+        id: `guest-${Date.now()}`,
+        name: 'Guest Operator',
+        type: 'access_code'
+      });
     }, 1200);
   };
 

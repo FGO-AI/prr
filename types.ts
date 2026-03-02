@@ -39,7 +39,11 @@ export interface BetLeg {
   injuryStatus?: string;
   leagueAvg?: number;
   recentHitRate?: string;
-  recentGames?: GameLogEntry[]; // Real data from search
+  recentGames?: GameLogEntry[];
+  
+  // Historical Settlement
+  actualValue?: number;
+  settledStatus?: 'Pending' | 'Hit' | 'Miss' | 'Void';
   
   // New Engine Variables
   x10?: number;
@@ -55,7 +59,6 @@ export interface BetLeg {
   muFinal?: number;
   zScore?: number;
   
-  // SGP Correlations
   correlations?: {
     playerName: string;
     statType: string;
@@ -77,6 +80,14 @@ export interface ParlayRecommendation {
   summary: string;
   timestamp: string;
   roiPotential?: number;
+  isUserGenerated?: boolean;
+}
+
+export interface User {
+  id: string;
+  email?: string;
+  name?: string;
+  type: 'email' | 'access_code';
 }
 
 export interface UserInputState {
