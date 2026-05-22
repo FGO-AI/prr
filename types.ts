@@ -13,6 +13,17 @@ export enum RiskLevel {
   VERY_HIGH = 'Moonshot (Extreme Odds)'
 }
 
+export enum BettingApp {
+  ALL = 'All Apps',
+  CHALKBOARD = 'Chalkboard',
+  UNDERDOG = 'Underdog Fantasy',
+  PRIZEPICKS = 'PrizePicks',
+  FANDUEL = 'FanDuel',
+  DRAFTKINGS = 'DraftKings',
+  BETMGM = 'BetMGM',
+  CAESARS = 'Caesars'
+}
+
 export interface GameLogEntry {
   date: string;
   opponent: string;
@@ -58,6 +69,21 @@ export interface BetLeg {
   leagueAllowed?: number;
   muFinal?: number;
   zScore?: number;
+  marketSentiment?: string;
+  correlationInsight?: string;
+  gameTime?: string;
+  gameDate?: string;
+  dataSource?: string;
+  lastUpdated?: string;
+  historicalInfluence?: string;
+  
+  marketOdds?: {
+    fanDuel?: number;
+    draftKings?: number;
+    betMGM?: number;
+    pinnacle?: number;
+    caesars?: number;
+  };
   
   correlations?: {
     playerName: string;
@@ -78,9 +104,16 @@ export interface ParlayRecommendation {
   correlationScore: number;
   varianceScore: number;
   summary: string;
+  rankingJustification?: string;
   timestamp: string;
   roiPotential?: number;
   isUserGenerated?: boolean;
+}
+
+export enum SubscriptionTier {
+  FREE = 'Free',
+  PRO = 'Pro',
+  WHALE = 'Whale'
 }
 
 export interface User {
@@ -88,6 +121,9 @@ export interface User {
   email?: string;
   name?: string;
   type: 'email' | 'access_code';
+  tier: SubscriptionTier;
+  spinsRemaining?: number;
+  lastSpinResetDate?: string;
 }
 
 export interface UserInputState {
@@ -97,4 +133,5 @@ export interface UserInputState {
   filters: string;
   statType: string;
   advancedMetric: string;
+  selectedApp: BettingApp;
 }

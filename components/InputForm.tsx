@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { League, RiskLevel, UserInputState } from '../types';
+import { League, RiskLevel, BettingApp, UserInputState } from '../types';
 import { 
     BrainCircuit, Search, Clock, RefreshCw, ChevronRight,
     Target, Globe, Database
@@ -11,6 +11,9 @@ interface InputFormProps {
   onSubmit: () => void;
   isLoading: boolean;
   lastSyncTime: Date | null;
+  spinsRemaining?: number;
+  maxSpins?: number;
+  nbaMatchups?: any[];
 }
 
 const AUTOCOMPLETE_DATA = [
@@ -25,7 +28,7 @@ const AUTOCOMPLETE_DATA = [
 ];
 
 export const InputForm: React.FC<InputFormProps> = ({ 
-  formData, setFormData, onSubmit, isLoading, lastSyncTime
+  formData, setFormData, onSubmit, isLoading, lastSyncTime, spinsRemaining, maxSpins, nbaMatchups = []
 }) => {
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -99,9 +102,18 @@ export const InputForm: React.FC<InputFormProps> = ({
           </div>
           <h2 className="text-base font-bold text-white tracking-tight">Intelligence Terminal</h2>
         </div>
-        <div className="hidden sm:flex flex-col text-right">
-             <span className="text-[8px] text-gray-500 font-mono uppercase">Last Sync</span>
-             <span className="text-[10px] text-emerald-500 font-mono font-bold">{formatTime(lastSyncTime)}</span>
+        <div className="flex items-center gap-4">
+             <div className="flex flex-col text-right">
+                  <span className="text-[8px] text-gray-500 font-mono uppercase">Daily Spins</span>
+                  <span className={`text-[10px] font-mono font-bold ${spinsRemaining === 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                    {spinsRemaining !== undefined ? `${spinsRemaining} / ${maxSpins}` : '-- / --'}
+                  </span>
+             </div>
+             <div className="h-6 w-px bg-gray-800"></div>
+             <div className="flex flex-col text-right">
+                  <span className="text-[8px] text-gray-500 font-mono uppercase">Last Sync</span>
+                  <span className="text-[10px] text-emerald-500 font-mono font-bold">{formatTime(lastSyncTime)}</span>
+             </div>
         </div>
       </div>
 
@@ -144,9 +156,38 @@ export const InputForm: React.FC<InputFormProps> = ({
               </div>
             )}
           </div>
+          
+          {nbaMatchups && nbaMatchups.length > 0 && formData.league === League.NBA && (
+            <div className="mt-2.5 flex flex-wrap gap-1.5 items-center">
+              <span className="text-[8px] font-mono font-bold text-gray-500 uppercase tracking-widest mr-1">Active Series:</span>
+              {nbaMatchups.map((game, idx) => {
+                const label = `${game.awayTeam.split(' ').pop()} at ${game.homeTeam.split(' ').pop()}`;
+                const isSelected = formData.filters.toLowerCase().includes(game.awayTeam.split(' ').pop().toLowerCase()) || 
+                                   formData.filters.toLowerCase().includes(game.homeTeam.split(' ').pop().toLowerCase());
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => ({ ...prev, filters: `${game.awayTeam} at ${game.homeTeam}` }));
+                    }}
+                    className={`px-2 py-0.5 text-[9px] font-mono font-bold rounded border transition-all flex items-center gap-1.5 shrink-0 ${
+                      isSelected
+                        ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400'
+                        : 'bg-gray-950/60 border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700'
+                    }`}
+                    title={`${game.awayTeam} at ${game.homeTeam} (${game.gameTime}) - ${game.seriesInfo || 'Playoffs'}`}
+                  >
+                    <span className={`w-1 h-1 rounded-full ${isSelected ? 'bg-emerald-400 animate-pulse' : 'bg-gray-600'}`}></span>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        <div className="md:col-span-3">
+        <div className="md:col-span-2">
           <label className="block text-[9px] text-gray-500 uppercase tracking-widest mb-1.5 font-bold">League</label>
           <div className="relative">
             <select name="league" value={formData.league} onChange={handleChange} className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-xs font-mono text-white appearance-none h-12 sm:h-auto">
@@ -156,11 +197,21 @@ export const InputForm: React.FC<InputFormProps> = ({
           </div>
         </div>
 
-        <div className="md:col-span-3">
+        <div className="md:col-span-2">
           <label className="block text-[9px] text-gray-500 uppercase tracking-widest mb-1.5 font-bold">Risk Weight</label>
           <div className="relative">
             <select name="riskLevel" value={formData.riskLevel} onChange={handleChange} className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-xs font-mono text-white appearance-none h-12 sm:h-auto">
               {Object.values(RiskLevel).map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 rotate-90 text-gray-600 pointer-events-none" size={14} />
+          </div>
+        </div>
+
+        <div className="md:col-span-2">
+          <label className="block text-[9px] text-gray-500 uppercase tracking-widest mb-1.5 font-bold">Betting App</label>
+          <div className="relative">
+            <select name="selectedApp" value={formData.selectedApp} onChange={handleChange} className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-xs font-mono text-white appearance-none h-12 sm:h-auto">
+              {Object.values(BettingApp).map(app => <option key={app} value={app}>{app}</option>)}
             </select>
             <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 rotate-90 text-gray-600 pointer-events-none" size={14} />
           </div>
@@ -178,9 +229,17 @@ export const InputForm: React.FC<InputFormProps> = ({
                 <span className="text-[9px] font-mono text-gray-500 uppercase">Live Feed</span>
             </div>
          </div>
-         <button onClick={handleSubmission} disabled={isLoading} className="w-full sm:w-auto px-10 py-4 bg-emerald-500 hover:bg-emerald-600 text-gray-950 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-all flex items-center justify-center gap-3 h-14 sm:h-auto">
+         <button 
+           onClick={handleSubmission} 
+           disabled={isLoading || (spinsRemaining !== undefined && spinsRemaining <= 0)} 
+           className={`w-full sm:w-auto px-10 py-4 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-all flex items-center justify-center gap-3 h-14 sm:h-auto ${
+             (spinsRemaining !== undefined && spinsRemaining <= 0) 
+               ? 'bg-gray-800 text-gray-600 cursor-not-allowed border border-gray-700' 
+               : 'bg-emerald-500 hover:bg-emerald-600 text-gray-950'
+           }`}
+         >
            {isLoading ? <RefreshCw size={16} className="animate-spin" /> : <Target size={16} />}
-           {isLoading ? 'ANALYZING...' : 'ANALYZE MARKET'}
+           {isLoading ? 'ANALYZING...' : (spinsRemaining !== undefined && spinsRemaining <= 0) ? 'QUOTA EXCEEDED' : 'ANALYZE MARKET'}
          </button>
       </div>
     </div>

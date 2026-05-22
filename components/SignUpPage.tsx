@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { User, Mail, Lock, ArrowRight, ShieldAlert, CheckCircle2, Zap, Shield } from './Icons';
-import { User as UserType } from '../types';
+import { User, Mail, Lock, ArrowRight, ShieldAlert, CheckCircle2, Zap, Shield, Trophy, Crown } from './Icons';
+import { User as UserType, SubscriptionTier } from '../types';
 
 interface SignUpPageProps {
   onComplete: (user: UserType) => void;
@@ -15,7 +15,8 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onComplete, onLogin, onG
     name: '',
     email: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    tier: SubscriptionTier.FREE
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -25,6 +26,10 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onComplete, onLogin, onG
       [e.target.name]: e.target.value
     });
     setError(null);
+  };
+
+  const handleTierSelect = (tier: SubscriptionTier) => {
+    setFormData({ ...formData, tier });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -55,7 +60,8 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onComplete, onLogin, onG
         id: `user-${Date.now()}`,
         email: formData.email,
         name: formData.name,
-        type: 'email'
+        type: 'email',
+        tier: formData.tier
       });
     }, 1500);
   };
@@ -73,7 +79,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onComplete, onLogin, onG
       </div>
       <div className="absolute inset-0 bg-gradient-to-t from-gray-950 via-transparent to-gray-950/80 z-0 pointer-events-none"></div>
 
-      <div className="relative z-10 w-full max-w-md">
+      <div className="relative z-10 w-full max-w-xl">
         
         {/* Branding Header */}
         <div className="text-center mb-8 animate-fadeIn">
@@ -90,7 +96,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onComplete, onLogin, onG
             {/* Top Border Gradient */}
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-gray-800 via-emerald-500 to-gray-800 opacity-50"></div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-6">
                 
                 {error && (
                     <div className="bg-rose-950/30 border border-rose-900/50 text-rose-300 px-4 py-3 rounded-lg text-[10px] font-mono flex items-center gap-2 animate-pulse">
@@ -99,68 +105,118 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onComplete, onLogin, onG
                     </div>
                 )}
 
-                <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Operator Alias</label>
-                    <div className="relative group">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <User size={16} className="text-gray-600 group-focus-within:text-emerald-500 transition-colors" />
-                        </div>
-                        <input
-                            type="text"
-                            name="name"
-                            value={formData.name}
-                            onChange={handleChange}
-                            placeholder="e.g. JohnDoe_01"
-                            className="w-full bg-gray-950 border border-gray-800 text-white rounded-lg py-3 pl-10 pr-4 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder-gray-800 text-sm font-mono"
-                        />
-                    </div>
-                </div>
-
-                <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Email Connection</label>
-                    <div className="relative group">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <Mail size={16} className="text-gray-600 group-focus-within:text-emerald-500 transition-colors" />
-                        </div>
-                        <input
-                            type="email"
-                            name="email"
-                            value={formData.email}
-                            onChange={handleChange}
-                            placeholder="name@terminal.io"
-                            className="w-full bg-gray-950 border border-gray-800 text-white rounded-lg py-3 pl-10 pr-4 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder-gray-800 text-sm font-mono"
-                        />
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Security Key</label>
-                        <div className="relative group">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                <Lock size={16} className="text-gray-600 group-focus-within:text-emerald-500 transition-colors" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-5">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Operator Alias</label>
+                            <div className="relative group">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <User size={16} className="text-gray-600 group-focus-within:text-emerald-500 transition-colors" />
+                                </div>
+                                <input
+                                    type="text"
+                                    name="name"
+                                    value={formData.name}
+                                    onChange={handleChange}
+                                    placeholder="e.g. JohnDoe_01"
+                                    className="w-full bg-gray-950 border border-gray-800 text-white rounded-lg py-3 pl-10 pr-4 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder-gray-800 text-sm font-mono"
+                                />
                             </div>
-                            <input
-                                type="password"
-                                name="password"
-                                value={formData.password}
-                                onChange={handleChange}
-                                placeholder="••••••••"
-                                className="w-full bg-gray-950 border border-gray-800 text-white rounded-lg py-3 pl-10 pr-4 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder-gray-800 text-sm font-mono"
-                            />
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Email Connection</label>
+                            <div className="relative group">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <Mail size={16} className="text-gray-600 group-focus-within:text-emerald-500 transition-colors" />
+                                </div>
+                                <input
+                                    type="email"
+                                    name="email"
+                                    value={formData.email}
+                                    onChange={handleChange}
+                                    placeholder="name@terminal.io"
+                                    className="w-full bg-gray-950 border border-gray-800 text-white rounded-lg py-3 pl-10 pr-4 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder-gray-800 text-sm font-mono"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Security Key</label>
+                            <div className="relative group">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <Lock size={16} className="text-gray-600 group-focus-within:text-emerald-500 transition-colors" />
+                                </div>
+                                <input
+                                    type="password"
+                                    name="password"
+                                    value={formData.password}
+                                    onChange={handleChange}
+                                    placeholder="••••••••"
+                                    className="w-full bg-gray-950 border border-gray-800 text-white rounded-lg py-3 pl-10 pr-4 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder-gray-800 text-sm font-mono"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Verify Key</label>
+                            <div className="relative group">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <Lock size={16} className="text-gray-600 group-focus-within:text-emerald-500 transition-colors" />
+                                </div>
+                                <input
+                                    type="password"
+                                    name="confirmPassword"
+                                    value={formData.confirmPassword}
+                                    onChange={handleChange}
+                                    placeholder="••••••••"
+                                    className="w-full bg-gray-950 border border-gray-800 text-white rounded-lg py-3 pl-10 pr-4 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder-gray-800 text-sm font-mono"
+                                />
+                            </div>
                         </div>
                     </div>
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Verify</label>
-                        <div className="relative group">
-                            <input
-                                type="password"
-                                name="confirmPassword"
-                                value={formData.confirmPassword}
-                                onChange={handleChange}
-                                placeholder="••••••••"
-                                className="w-full bg-gray-950 border border-gray-800 text-white rounded-lg py-3 px-4 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 transition-all placeholder-gray-800 text-sm font-mono"
-                            />
+
+                    <div className="space-y-4">
+                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest ml-1">Subscription Tier</label>
+                        <div className="space-y-3">
+                            <button 
+                                type="button"
+                                onClick={() => handleTierSelect(SubscriptionTier.FREE)}
+                                className={`w-full p-4 rounded-xl border transition-all text-left group relative overflow-hidden ${formData.tier === SubscriptionTier.FREE ? 'bg-emerald-500/10 border-emerald-500' : 'bg-gray-950 border-gray-800 hover:border-gray-700'}`}
+                            >
+                                <div className="flex items-center justify-between mb-1">
+                                    <span className={`text-xs font-bold uppercase tracking-widest ${formData.tier === SubscriptionTier.FREE ? 'text-emerald-400' : 'text-gray-400'}`}>Standard</span>
+                                    <Zap size={14} className={formData.tier === SubscriptionTier.FREE ? 'text-emerald-400' : 'text-gray-700'} />
+                                </div>
+                                <p className="text-[10px] text-gray-500 font-mono leading-tight">5 spins of 5 picks. Minimum 60% hit probability. Standard metrics.</p>
+                                {formData.tier === SubscriptionTier.FREE && <div className="absolute top-0 right-0 w-8 h-8 bg-emerald-500/20 rounded-bl-full flex items-center justify-center pl-2 pb-2"><CheckCircle2 size={12} className="text-emerald-400" /></div>}
+                            </button>
+
+                            <button 
+                                type="button"
+                                onClick={() => handleTierSelect(SubscriptionTier.PRO)}
+                                className={`w-full p-4 rounded-xl border transition-all text-left group relative overflow-hidden ${formData.tier === SubscriptionTier.PRO ? 'bg-blue-500/10 border-blue-500' : 'bg-gray-950 border-gray-800 hover:border-gray-700'}`}
+                            >
+                                <div className="flex items-center justify-between mb-1">
+                                    <span className={`text-xs font-bold uppercase tracking-widest ${formData.tier === SubscriptionTier.PRO ? 'text-blue-400' : 'text-gray-400'}`}>Professional</span>
+                                    <Trophy size={14} className={formData.tier === SubscriptionTier.PRO ? 'text-blue-400' : 'text-gray-700'} />
+                                </div>
+                                <p className="text-[10px] text-gray-500 font-mono leading-tight">5 spins of 15 picks. Minimum 75% hit probability. Advanced metrics.</p>
+                                {formData.tier === SubscriptionTier.PRO && <div className="absolute top-0 right-0 w-8 h-8 bg-blue-500/20 rounded-bl-full flex items-center justify-center pl-2 pb-2"><CheckCircle2 size={12} className="text-blue-400" /></div>}
+                            </button>
+
+                            <button 
+                                type="button"
+                                onClick={() => handleTierSelect(SubscriptionTier.WHALE)}
+                                className={`w-full p-4 rounded-xl border transition-all text-left group relative overflow-hidden ${formData.tier === SubscriptionTier.WHALE ? 'bg-purple-500/10 border-purple-500' : 'bg-gray-950 border-gray-800 hover:border-gray-700'}`}
+                            >
+                                <div className="flex items-center justify-between mb-1">
+                                    <span className={`text-xs font-bold uppercase tracking-widest ${formData.tier === SubscriptionTier.WHALE ? 'text-purple-400' : 'text-gray-400'}`}>Whale Protocol</span>
+                                    <Crown size={14} className={formData.tier === SubscriptionTier.WHALE ? 'text-purple-400' : 'text-gray-700'} />
+                                </div>
+                                <p className="text-[10px] text-gray-500 font-mono leading-tight">15 spins of 15 picks. Minimum 65% hit probability. Priority scan & deep insights.</p>
+                                {formData.tier === SubscriptionTier.WHALE && <div className="absolute top-0 right-0 w-8 h-8 bg-purple-500/20 rounded-bl-full flex items-center justify-center pl-2 pb-2"><CheckCircle2 size={12} className="text-purple-400" /></div>}
+                            </button>
                         </div>
                     </div>
                 </div>

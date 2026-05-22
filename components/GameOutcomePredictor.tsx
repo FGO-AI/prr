@@ -1,0 +1,955 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Cpu, Target, RefreshCw, ChevronDown, Check, AlertCircle, 
+  TrendingUp, Star, Lock, Trophy, Award, Trash2, Sliders, Play
+} from 'lucide-react';
+import { 
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+} from 'recharts';
+
+interface PlayerStat {
+  playerName: string;
+  usg: number;
+  ts: number;
+  minutes: number;
+}
+
+interface PlayerProp {
+  playerName: string;
+  statType: string;
+  line: number;
+  projected: number;
+  overUnder: string;
+  edgePct: number;
+}
+
+interface GamePredictionData {
+  homeTeam: string;
+  awayTeam: string;
+  homeNetRtg: number;
+  awayNetRtg: number;
+  homePace: number;
+  awayPace: number;
+  homeTS: number;
+  awayTS: number;
+  injuryReport: string[];
+  projectedMargin: number;
+  bookSpread: number;
+  edgePoints: number;
+  edgeCategory: string;
+  recommendedPick: string;
+  confidence: number;
+  homePlayerStats: PlayerStat[];
+  awayPlayerStats: PlayerStat[];
+  playerProps: PlayerProp[];
+
+  // ML target fields
+  projectedHomeWinProb: number;
+  projectedAwayWinProb: number;
+  projectedHomeML: number;
+  projectedAwayML: number;
+  bookHomeML: number;
+  bookAwayML: number;
+  mlEdgeTeam: string;
+  mlEdgePct: number;
+  mlEdgeCategory: string;
+}
+
+interface MatchupItem {
+  id: string;
+  homeTeam: string;
+  awayTeam: string;
+  gameTime: string;
+  bookSpread: number;
+  bookTotal: number;
+  bookHomeML?: number;
+  bookAwayML?: number;
+}
+
+interface TrackedPick {
+  id: string;
+  matchup: string;
+  pick: string;
+  bookSpread: number;
+  edge: number;
+  confidence: number;
+  result: 'PENDING' | 'WIN' | 'LOSS';
+  createdAt: string;
+}
+
+export const GameOutcomePredictor: React.FC = () => {
+  // UI states
+  const [matchups, setMatchups] = useState<MatchupItem[]>([]);
+  const [selectedMatchupId, setSelectedMatchupId] = useState<string>('');
+  const [isCustom, setIsCustom] = useState<boolean>(false);
+  
+  // Inputs
+  const [customHome, setCustomHome] = useState<string>('Lakers');
+  const [customAway, setCustomAway] = useState<string>('Warriors');
+  const [bookSpread, setBookSpread] = useState<number>(-4.5);
+  const [bookTotal, setBookTotal] = useState<number>(222.0);
+  const [bookHomeML, setBookHomeML] = useState<number>(-190);
+  const [bookAwayML, setBookAwayML] = useState<number>(160);
+
+  // Loaders
+  const [isPredicting, setIsPredicting] = useState<boolean>(false);
+  
+  // Results
+  const [prediction, setPrediction] = useState<GamePredictionData | null>(null);
+  
+  // Ledger and Leaderboard tracking
+  const [trackedPicks, setTrackedPicks] = useState<TrackedPick[]>([]);
+  const [sortBy, setSortBy] = useState<'highest' | 'recent'>('highest');
+
+  // Helper client-side formula to convert standard point spread to estimated american money line
+  const estimateML = (spread: number) => {
+    const margin = -spread;
+    const prob = 1 / (1 + Math.exp(-0.1554 * margin));
+    let hML = -110;
+    let aML = -110;
+    if (prob >= 0.5) {
+      hML = Math.round(-(prob / (1 - prob)) * 100);
+      aML = Math.round(((1 - prob) / prob) * 100);
+    } else {
+      hML = Math.round((prob / (1 - prob)) * 100);
+      aML = Math.round(-((1 - prob) / prob) * 100);
+    }
+    return { homeML: hML, awayML: aML };
+  };
+
+  // Fetch matchups on mount
+  useEffect(() => {
+    fetchMatchups();
+    // Load saved tracked picks
+    const saved = localStorage.getItem('tracked_nba_predictions');
+    if (saved) {
+      try {
+        setTrackedPicks(JSON.parse(saved));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, []);
+
+  const fetchMatchups = async () => {
+    try {
+      const res = await fetch('/api/nba/games/today');
+      if (res.ok) {
+        const data: MatchupItem[] = await res.json();
+        setMatchups(data);
+        if (data.length > 0) {
+          setSelectedMatchupId(data[0].id);
+          setBookSpread(data[0].bookSpread);
+          setBookTotal(data[0].bookTotal);
+          const est = estimateML(data[0].bookSpread);
+          setBookHomeML(data[0].bookHomeML || est.homeML);
+          setBookAwayML(data[0].bookAwayML || est.awayML);
+        }
+      }
+    } catch (e) {
+      console.error("Matchups fetch error", e);
+    }
+  };
+
+  // Triggered when selected matchup dropdown changes
+  const handleMatchupChange = (id: string) => {
+    setSelectedMatchupId(id);
+    const matched = matchups.find(m => m.id === id);
+    if (matched) {
+      setBookSpread(matched.bookSpread);
+      setBookTotal(matched.bookTotal);
+      const est = estimateML(matched.bookSpread);
+      setBookHomeML(matched.bookHomeML || est.homeML);
+      setBookAwayML(matched.bookAwayML || est.awayML);
+      setIsCustom(false);
+    }
+  };
+
+  // Run the predictions routine
+  const runPredictionEngine = async () => {
+    setIsPredicting(true);
+    setPrediction(null);
+
+    // Call predict API
+    let home = customHome;
+    let away = customAway;
+
+    if (!isCustom) {
+      const selectedGame = matchups.find(m => m.id === selectedMatchupId);
+      if (selectedGame) {
+        home = selectedGame.homeTeam;
+        away = selectedGame.awayTeam;
+      }
+    }
+
+    try {
+      const res = await fetch('/api/nba/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          homeTeam: home,
+          awayTeam: away,
+          bookSpread,
+          bookTotal,
+          bookHomeML,
+          bookAwayML
+        })
+      });
+
+      if (res.ok) {
+        const data: GamePredictionData = await res.json();
+        setPrediction(data);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsPredicting(false);
+    }
+  };
+
+  // Save/Track a pick to outcome list (Week 4 Features)
+  const lockAndTrackPick = (pickToSave?: string, confidenceToSave?: number, edgeToSave?: number) => {
+    const defaultPickName = prediction ? prediction.recommendedPick : `${customAway} +${bookSpread}`;
+    const finalPick = pickToSave || defaultPickName;
+    const finalConf = confidenceToSave || (prediction ? prediction.confidence : 60);
+    const finalEdge = edgeToSave || (prediction ? prediction.edgePoints : 1.5);
+    const matchupStr = prediction ? `${prediction.awayTeam} @ ${prediction.homeTeam}` : `${customAway} @ ${customHome}`;
+
+    const newPick: TrackedPick = {
+      id: "pk_" + Date.now() + Math.random().toString(36).substr(2, 4),
+      matchup: matchupStr,
+      pick: finalPick,
+      bookSpread: bookSpread,
+      edge: finalEdge,
+      confidence: finalConf,
+      result: 'PENDING',
+      createdAt: new Date().toLocaleDateString()
+    };
+
+    const updated = [newPick, ...trackedPicks];
+    setTrackedPicks(updated);
+    localStorage.setItem('tracked_nba_predictions', JSON.stringify(updated));
+  };
+
+  const updatePickResult = (id: string, sResult: 'WIN' | 'LOSS') => {
+    const updated = trackedPicks.map(p => {
+      if (p.id === id) {
+        return { ...p, result: sResult };
+      }
+      return p;
+    });
+    setTrackedPicks(updated);
+    localStorage.setItem('tracked_nba_predictions', JSON.stringify(updated));
+  };
+
+  const deleteTrackedPick = (id: string) => {
+    const updated = trackedPicks.filter(p => p.id !== id);
+    setTrackedPicks(updated);
+    localStorage.setItem('tracked_nba_predictions', JSON.stringify(updated));
+  };
+
+  // Generate Recharts normal curve data points for Total distribution simulation
+  const mockCurveData = prediction ? Array.from({ length: 41 }, (_, i) => {
+    const totalPoint = (bookTotal - 20) + (i * 1);
+    const exponent = -Math.pow(totalPoint - bookTotal, 2) / (2 * Math.pow(9, 2));
+    const density = Math.round((1 / (9 * Math.sqrt(2 * Math.PI))) * Math.exp(exponent) * 1000);
+    return { name: totalPoint.toString(), density };
+  }) : [];
+
+  // Recalculate human performance metrics from settled outcomes
+  const statsSummary = React.useMemo(() => {
+    const settled = trackedPicks.filter(p => p.result !== 'PENDING');
+    const wins = settled.filter(p => p.result === 'WIN').length;
+    const losses = settled.filter(p => p.result === 'LOSS').length;
+    const wr = settled.length > 0 ? Math.round((wins / settled.length) * 100) : 0;
+    return { wins, losses, wr, total: settled.length };
+  }, [trackedPicks]);
+
+  // Leaders roster (Mock Global Leaderboard aligned to user's real stats)
+  const mockLeaderboard = [
+    { name: "QuantAlgo_Edge", winRate: 69.1, wins: 56, losses: 25, active: true },
+    { name: "SharpSavant", winRate: 65.4, wins: 48, losses: 25, active: false },
+    { name: "You (mlopes2023)", winRate: statsSummary.total > 0 ? statsSummary.wr : 58.5, wins: statsSummary.wins, losses: statsSummary.losses, active: true, isUser: true },
+    { name: "MarginSniper_AI", winRate: 63.8, wins: 60, losses: 34, active: false },
+    { name: "BookFinderPro", winRate: 61.2, wins: 41, losses: 26, active: false }
+  ].sort((a,b) => b.winRate - a.winRate);
+
+  return (
+    <div className="space-y-8 animate-fadeIn">
+      {/* Tab Branding Header */}
+      <div className="p-5 bg-gradient-to-r from-blue-900/10 via-blue-500/5 to-gray-950 border border-blue-500/15 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl">
+        <div className="flex items-center gap-4">
+          <div className="p-3.5 bg-blue-500/10 rounded-xl border border-blue-500/20">
+            <Cpu className="text-blue-400 animate-pulse" size={24} />
+          </div>
+          <div>
+            <h2 className="text-lg font-black text-white uppercase tracking-wider">Edge-Search Prediction Layer</h2>
+            <p className="text-xs text-blue-500/80 font-mono uppercase tracking-[0.2em] mt-1">
+              Live NBA Search Grounding Engine • NetRtg Edge Comparison Model
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono">
+            GROUNDED WEB PIPELINE ACTIVE
+          </span>
+        </div>
+      </div>
+
+      {/* Control Console Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        {/* Left Input form Controls (5 cols) */}
+        <div className="lg:col-span-5 space-y-6">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl flex flex-col justify-between h-auto">
+            <div className="space-y-5">
+              <div className="flex items-center justify-between border-b border-gray-800 pb-4 mb-2">
+                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider font-mono flex items-center gap-1.5">
+                  <Sliders size={14} className="text-blue-500" /> Matchup Configuration
+                </span>
+                
+                {/* Custom Toggle Switch */}
+                <button 
+                  onClick={() => setIsCustom(!isCustom)}
+                  className={`px-3 py-1 text-[9px] font-bold tracking-widest uppercase rounded border transition-all ${
+                    isCustom ? 'bg-blue-500/15 border-blue-400 text-blue-300' : 'bg-gray-950 border-gray-800 text-gray-500'
+                  }`}
+                >
+                  {isCustom ? "Custom Teams" : "Today's Games"}
+                </button>
+              </div>
+
+              {isCustom ? (
+                <div className="grid grid-cols-2 gap-4 animate-fadeIn">
+                  <div className="p-3 bg-gray-950 border border-gray-805 rounded-xl">
+                    <label className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 block">Home Team</label>
+                    <input 
+                      type="text" 
+                      value={customHome} 
+                      onChange={(e) => setCustomHome(e.target.value)}
+                      className="w-full bg-transparent border-0 text-white font-mono text-xs focus:ring-0 outline-none p-0"
+                    />
+                  </div>
+                  <div className="p-3 bg-gray-950 border border-gray-805 rounded-xl">
+                    <label className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 block">Away Team</label>
+                    <input 
+                      type="text" 
+                      value={customAway} 
+                      onChange={(e) => setCustomAway(e.target.value)}
+                      className="w-full bg-transparent border-0 text-white font-mono text-xs focus:ring-0 outline-none p-0"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-gray-950 border border-gray-800 rounded-xl relative select-none animate-fadeIn">
+                  <label className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-2.5 block">Select Live NBA Matchup</label>
+                  <div className="relative">
+                    <select 
+                      value={selectedMatchupId}
+                      onChange={(e) => handleMatchupChange(e.target.value)}
+                      className="w-full bg-gray-900 border border-gray-800 text-white font-mono font-bold text-xs p-3.5 pr-10 rounded-lg outline-none appearance-none cursor-pointer focus:border-blue-500 transition-colors"
+                    >
+                      {matchups.map((game) => (
+                        <option key={game.id} value={game.id}>
+                          {game.awayTeam} at {game.homeTeam} ({game.gameTime})
+                        </option>
+                      ))}
+                      {matchups.length === 0 && (
+                        <option value="">No schedule found (Simulation Active)</option>
+                      )}
+                    </select>
+                    <div className="absolute top-1/2 right-4 transform -translate-y-1/2 pointer-events-none text-gray-500">
+                      <ChevronDown size={14} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Book Betting Parameters */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-3.5 bg-gray-950 border border-gray-800 rounded-xl">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Book Spread</label>
+                    <span className="text-[8px] font-mono text-gray-600 block leading-none">Home Fav (-) / Und (+)</span>
+                  </div>
+                  <input 
+                    type="number" 
+                    step="0.5" 
+                    value={bookSpread}
+                    onChange={(e) => {
+                      const spreadVal = Number(e.target.value);
+                      setBookSpread(spreadVal);
+                      const est = estimateML(spreadVal);
+                      setBookHomeML(est.homeML);
+                      setBookAwayML(est.awayML);
+                    }}
+                    className="w-full bg-transparent border-0 text-lg font-mono font-bold text-white focus:ring-0 outline-none p-0"
+                  />
+                </div>
+                <div className="p-3.5 bg-gray-950 border border-gray-800 rounded-xl">
+                  <label className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-2.5 block">Book Game Total</label>
+                  <input 
+                    type="number" 
+                    step="0.5" 
+                    value={bookTotal}
+                    onChange={(e) => setBookTotal(Number(e.target.value))}
+                    className="w-full bg-transparent border-0 text-lg font-mono font-bold text-white focus:ring-0 outline-none p-0"
+                  />
+                </div>
+
+                <div className="p-3.5 bg-gray-950 border border-gray-800 rounded-xl">
+                  <label className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-2.5 block">Book Home ML</label>
+                  <input 
+                    type="number" 
+                    step="5" 
+                    value={bookHomeML}
+                    onChange={(e) => setBookHomeML(Number(e.target.value))}
+                    className="w-full bg-transparent border-0 text-lg font-mono font-bold text-white focus:ring-0 outline-none p-0"
+                  />
+                </div>
+                <div className="p-3.5 bg-gray-950 border border-gray-800 rounded-xl">
+                  <label className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-2.5 block">Book Away ML</label>
+                  <input 
+                    type="number" 
+                    step="5" 
+                    value={bookAwayML}
+                    onChange={(e) => setBookAwayML(Number(e.target.value))}
+                    className="w-full bg-transparent border-0 text-lg font-mono font-bold text-white focus:ring-0 outline-none p-0"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* CTA action */}
+            <button 
+              onClick={runPredictionEngine}
+              disabled={isPredicting}
+              className={`w-full mt-6 py-4 bg-blue-500 hover:bg-blue-600 text-gray-950 rounded-xl font-bold uppercase tracking-[0.25em] text-[10px] transition-all flex items-center justify-center gap-3.5 shadow-lg shadow-blue-500/20 ${
+                isPredicting ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+            >
+              <RefreshCw size={14} className={isPredicting ? "animate-spin" : ""} />
+              {isPredicting ? "Executing AI Engine..." : "Analyze Live Edge & Predict"}
+            </button>
+          </div>
+
+          {/* Injury & Info Alert Check */}
+          <div className="p-4 bg-blue-900/10 border border-blue-500/15 rounded-xl flex items-start gap-3.5">
+            <AlertCircle size={18} className="text-blue-400 shrink-0 mt-0.5" />
+            <p className="text-[10px] text-gray-400 font-sans leading-relaxed">
+              <span className="font-bold text-blue-300 uppercase tracking-wider block mb-1">Prediction Guideline:</span>
+              This pipeline implements search grounding over live NBA roster sheets. Spreads are evaluated using actual team ratings factored with a <b>+2.75 HFA home boost factor</b>. Edges over 3.0 pts are flagged as <b>Strong Edge</b> signals.
+            </p>
+          </div>
+        </div>
+
+        {/* Right Console Output pane (7 cols) */}
+        <div className="lg:col-span-7">
+          
+          {/* Default initial inactive state */}
+          {!isPredicting && !prediction && (
+            <div className="bg-gray-900 border border-gray-800 h-96 rounded-2xl flex flex-col items-center justify-center text-center p-8 shadow-2xl">
+              <div className="p-4 bg-gray-950 border border-gray-800 rounded-full mb-4">
+                <Target size={30} className="text-gray-600 animate-pulse" />
+              </div>
+              <h3 className="font-bold text-white uppercase tracking-wider text-sm">Prediction Terminal Ready</h3>
+              <p className="text-[11px] text-gray-500 max-w-sm mt-1 mb-6">
+                Configure matchups on the left, then trigger the grounded search calculator to construct margin analyses.
+              </p>
+              <div className="flex border border-gray-800 divide-x divide-gray-800 rounded-lg overflow-hidden bg-gray-950 font-mono text-[9px] uppercase tracking-wider text-gray-500">
+                <span className="px-3.5 py-2">Formula: NetRtg/2</span>
+                <span className="px-3.5 py-2">Home Court: +2.75</span>
+                <span className="px-3.5 py-2">Grounding: Search</span>
+              </div>
+            </div>
+          )}
+
+          {/* Quantum Edge Loader Sweep Module */}
+          {isPredicting && (
+            <div className="bg-gray-950 border border-blue-500/20 shadow-2xl shadow-blue-500/5 h-96 rounded-2xl p-8 flex flex-col items-center justify-center text-center space-y-6 relative overflow-hidden">
+               <div className="relative flex items-center justify-center h-28 w-28">
+                  <div className="absolute inset-0 rounded-full border-2 border-dashed border-blue-500/10 animate-spin" style={{ animationDuration: '20s' }}></div>
+                  <div className="absolute inset-2 rounded-full border border-blue-400/30 animate-pulse"></div>
+                  <div className="absolute h-16 w-16 rounded-full bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+                     <Cpu size={28} className="text-blue-400 animate-spin" style={{ animationDuration: '6s' }} />
+                  </div>
+               </div>
+               <div className="space-y-2">
+                  <h4 className="text-xs font-mono font-bold tracking-[0.25em] text-blue-400 uppercase">Calculating Edge Projections...</h4>
+                  <p className="text-[10px] text-gray-400 font-mono">MODELING HARMONIC NETRTG • CONVERTING WIN PROBABILITIES • EXTRACTING VALUE</p>
+               </div>
+               <div className="w-48 bg-gray-900/60 h-1.5 rounded-full overflow-hidden border border-gray-800">
+                  <div className="bg-gradient-to-r from-blue-500 to-indigo-500 h-full rounded-full animate-pulse" style={{ width: '80%' }}></div>
+               </div>
+            </div>
+          )}
+
+          {/* Full prediction result view */}
+          {!isPredicting && prediction && (
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl p-6 space-y-6 animate-scaleIn">
+              
+              {/* Score / Pick recommendation header */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-950 p-4 rounded-xl border border-gray-800 gap-4">
+                <div>
+                  <div className="text-[10px] font-mono text-gray-500 uppercase tracking-widest flex items-center gap-1">
+                    Matchup Recommendation • Confidence {prediction.confidence}%
+                  </div>
+                  <div className="text-xl font-black text-rose-500 uppercase tracking-wide mt-1.5">
+                    {prediction.awayTeam} <span className="text-gray-500 text-sm font-normal">at</span> {prediction.homeTeam}
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-center sm:items-end w-full sm:w-auto">
+                  <div className={`px-4 py-2 rounded-xl text-center shadow-lg border w-full sm:w-auto text-[11px] font-black tracking-widest uppercase ${
+                    prediction.edgeCategory === 'Strong edge' 
+                      ? 'bg-emerald-500/15 border-emerald-400 text-emerald-300' 
+                      : prediction.edgeCategory === 'Moderate edge'
+                      ? 'bg-amber-500/15 border-amber-400 text-amber-300'
+                      : 'bg-gray-850 border-gray-700 text-gray-300'
+                  }`}>
+                    {prediction.recommendedPick} ({prediction.edgeCategory})
+                  </div>
+                </div>
+              </div>
+
+              {/* Edge, Projected Spread layout details */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-3.5 bg-gray-950 border border-gray-800 rounded-xl text-center">
+                  <div className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Projected Margin</div>
+                  <div className="text-xl font-mono font-bold text-white mt-1.5">{prediction.projectedMargin > 0 ? `Home +${prediction.projectedMargin}` : `Home ${prediction.projectedMargin}`}</div>
+                  <div className="text-[8px] text-gray-650 font-mono tracking-wide uppercase mt-1">LvsW: (N15_Home - N15_Away)/2 + 2.75</div>
+                </div>
+                <div className="p-3.5 bg-gray-950 border border-gray-800 rounded-xl text-center">
+                  <div className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Projected Spread</div>
+                  <div className="text-xl font-mono font-bold text-white mt-1.5">{(-prediction.projectedMargin) > 0 ? `Home +${(-prediction.projectedMargin)}` : `Home ${(-prediction.projectedMargin)}`}</div>
+                  <div className="text-[8px] text-gray-650 font-mono tracking-wide uppercase mt-1">Recalculated Home Spread</div>
+                </div>
+                <div className="p-3.5 bg-gray-950 border border-gray-800 rounded-xl text-center flex flex-col justify-between">
+                  <div>
+                    <div className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Detected Edge Points</div>
+                    <div className="text-xl font-mono font-bold text-emerald-400 mt-1.5">+{prediction.edgePoints} pts</div>
+                  </div>
+                  <div className="text-[8px] text-gray-650 font-mono tracking-wide uppercase">Formula: abs(our - book)</div>
+                </div>
+              </div>
+
+              {/* Quantum Moneyline Analytical Model Card */}
+              <div className="p-5 bg-gradient-to-b from-gray-950 to-gray-900 border border-gray-800 rounded-xl space-y-4">
+                <div className="flex items-center justify-between border-b border-gray-900 pb-3">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="text-emerald-400" size={16} />
+                    <span className="text-[11px] font-black text-white uppercase tracking-wider font-sans">
+                      Quantum Money Line Projection Model
+                    </span>
+                  </div>
+                  <span className={`text-[9.5px] font-mono tracking-widest uppercase px-2.5 py-0.5 rounded border ${
+                    prediction.mlEdgeCategory === 'Strong edge' 
+                      ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 font-black' 
+                      : prediction.mlEdgeCategory === 'Moderate edge'
+                      ? 'bg-amber-500/10 border-amber-500/20 text-amber-300 font-bold'
+                      : 'bg-gray-900 border-gray-800 text-gray-550'
+                  }`}>
+                    {prediction.mlEdgeCategory === 'No bet' ? 'No Edge Signal' : `${prediction.mlEdgeCategory}`}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-1">
+                  
+                  {/* Home Team ML Projections */}
+                  <div className="p-3.5 bg-gray-900/40 border border-gray-805 rounded-xl space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-black text-rose-400 uppercase tracking-wider">{prediction.homeTeam} (Home)</span>
+                      <span className="text-[9.5px] font-mono text-gray-400 uppercase">Win Prob: <b className="text-white">{(prediction.projectedHomeWinProb * 100).toFixed(1)}%</b></span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                      <div className="p-2 bg-gray-950 rounded border border-gray-900">
+                        <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Model Target ML</span>
+                        <span className="text-sm font-mono font-bold text-white mt-1 block">
+                          {prediction.projectedHomeML > 0 ? `+${prediction.projectedHomeML}` : prediction.projectedHomeML}
+                        </span>
+                      </div>
+                      <div className="p-2 bg-gray-950 rounded border border-gray-900">
+                        <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Sportsbook ML</span>
+                        <span className="text-sm font-mono font-bold text-gray-400 mt-1 block">
+                          {prediction.bookHomeML > 0 ? `+${prediction.bookHomeML}` : prediction.bookHomeML}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Away Team ML Projections */}
+                  <div className="p-3.5 bg-gray-900/40 border border-gray-805 rounded-xl space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-black text-blue-400 uppercase tracking-wider">{prediction.awayTeam} (Away)</span>
+                      <span className="text-[9.5px] font-mono text-gray-400 uppercase">Win Prob: <b className="text-white">{(prediction.projectedAwayWinProb * 100).toFixed(1)}%</b></span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                      <div className="p-2 bg-gray-950 rounded border border-gray-100/10">
+                        <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Model Target ML</span>
+                        <span className="text-sm font-mono font-bold text-white mt-1 block">
+                          {prediction.projectedAwayML > 0 ? `+${prediction.projectedAwayML}` : prediction.projectedAwayML}
+                        </span>
+                      </div>
+                      <div className="p-2 bg-gray-950 rounded border border-gray-100/10">
+                        <span className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Sportsbook ML</span>
+                        <span className="text-sm font-mono font-bold text-gray-400 mt-1 block">
+                          {prediction.bookAwayML > 0 ? `+${prediction.bookAwayML}` : prediction.bookAwayML}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Moneyline recommendation block banner */}
+                <div className="p-3 bg-emerald-500/5 border border-emerald-500/10 rounded-xl flex flex-col sm:flex-row items-center justify-between text-xs gap-3">
+                  <span className="text-[10px] text-gray-300 font-sans text-center sm:text-left leading-relaxed">
+                    {prediction.mlEdgePct > 0 ? (
+                      <span>
+                        Calculated edge: <b className="text-emerald-400">+{prediction.mlEdgePct}% win probability premium</b> on the <b className="text-white">{prediction.mlEdgeTeam}</b> compared to current sportsbook odds.
+                      </span>
+                    ) : (
+                      <span>No mathematical positive edge signal detected on the moneyline at these odds.</span>
+                    )}
+                  </span>
+                  
+                  {prediction.mlEdgePct > 0 && (
+                    <button
+                      onClick={() => {
+                        const mLine = prediction.mlEdgeTeam === prediction.homeTeam ? prediction.bookHomeML : prediction.bookAwayML;
+                        const formattedML = mLine > 0 ? `+${mLine}` : `${mLine}`;
+                        const winRate = Math.round((prediction.mlEdgeTeam === prediction.homeTeam ? prediction.projectedHomeWinProb : prediction.projectedAwayWinProb) * 100);
+                        lockAndTrackPick(`${prediction.mlEdgeTeam} ML (${formattedML})`, winRate, prediction.mlEdgePct);
+                      }}
+                      className="px-3.5 py-1.5 shrink-0 bg-emerald-550 text-gray-950 hover:bg-emerald-600 rounded text-[9.5px] font-black tracking-widest uppercase transition-all"
+                    >
+                      Track ML Pick
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Key Indicators grid: Team NetRtg & Pace comparison (Bento) */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                {/* Team stats list */}
+                <div className="md:col-span-12 p-4 bg-gray-950 border border-gray-800 rounded-xl space-y-4">
+                  <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest block border-b border-gray-900 pb-2">
+                    Matchup Intelligence Grid
+                  </span>
+                  
+                  <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                    <div className="text-left font-bold text-gray-500 uppercase tracking-widest text-[8px] self-center">Team Metrics</div>
+                    <div className="font-bold text-blue-300 font-mono mr-2">{prediction.awayTeam}</div>
+                    <div className="font-bold text-rose-300 font-mono ml-2">{prediction.homeTeam}</div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-center text-xs items-center border-t border-gray-900 pt-2 pb-1">
+                    <div className="text-left font-bold text-gray-400 uppercase tracking-normal text-[9px]">Net Rating (L15)</div>
+                    <div className="font-mono text-blue-400">+{prediction.awayNetRtg}</div>
+                    <div className="font-mono text-rose-400">+{prediction.homeNetRtg}</div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-center text-xs items-center border-t border-gray-900 pt-2 pb-1">
+                    <div className="text-left font-bold text-gray-400 uppercase tracking-normal text-[9px]">Average Game Pace</div>
+                    <div className="font-mono text-gray-300">{prediction.awayPace}</div>
+                    <div className="font-mono text-gray-300">{prediction.homePace}</div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-center text-xs items-center border-t border-gray-900 pt-2 pb-1">
+                    <div className="text-left font-bold text-gray-400 uppercase tracking-normal text-[9px]">True Shooting (TS%)</div>
+                    <div className="font-mono text-gray-400">{prediction.awayTS}%</div>
+                    <div className="font-mono text-gray-400">{prediction.homeTS}%</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Injury Bullet lists */}
+              <div className="p-4 bg-gray-950 border border-gray-800 rounded-xl space-y-3">
+                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest block border-b border-gray-900 pb-2">
+                  Injury & Availability Report
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {prediction.injuryReport.map((injury, index) => (
+                    <div key={index} className="flex items-start gap-2 text-[10px] text-gray-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500 mt-1 shrink-0"></span>
+                      <span>{injury}</span>
+                    </div>
+                  ))}
+                  {prediction.injuryReport.length === 0 && (
+                    <div className="text-[10px] text-gray-500">No major injuries noted on roster file.</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Player level stats lists (TS%, USG%, Minutes) */}
+              <div className="p-4 bg-gray-950 border border-gray-800 rounded-xl space-y-3.5">
+                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest block border-b border-gray-900 pb-2">
+                  Active Star Rosters (USG%, TS%, MIN)
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Home Team players */}
+                  <div>
+                    <h5 className="text-[9px] font-bold text-rose-400 uppercase tracking-wider mb-2.5">{prediction.homeTeam} Target Stars</h5>
+                    <div className="divide-y divide-gray-900 space-y-2 text-xs">
+                      {prediction.homePlayerStats?.map((p, i) => (
+                        <div key={i} className="flex justify-between items-center py-1 bg-gray-900/40 p-2.5 rounded border border-gray-900">
+                          <div>
+                            <span className="font-bold text-white block">{p.playerName}</span>
+                            <span className="text-[8px] text-gray-500 font-mono uppercase">{p.minutes} min/game</span>
+                          </div>
+                          <div className="text-right font-mono text-[10px] space-x-3">
+                            <span className="text-gray-400"><b className="text-gray-500 font-normal">USG:</b> {p.usg}%</span>
+                            <span className="text-gray-400"><b className="text-gray-500 font-normal">TS:</b> {p.ts}%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Away Team players */}
+                  <div>
+                    <h5 className="text-[9px] font-bold text-blue-400 uppercase tracking-wider mb-2.5">{prediction.awayTeam} Target Stars</h5>
+                    <div className="divide-y divide-gray-900 space-y-2 text-xs">
+                      {prediction.awayPlayerStats?.map((p, i) => (
+                        <div key={i} className="flex justify-between items-center py-1 bg-gray-900/40 p-2.5 rounded border border-gray-900">
+                          <div>
+                            <span className="font-bold text-white block">{p.playerName}</span>
+                            <span className="text-[8px] text-gray-500 font-mono uppercase">{p.minutes} min/game</span>
+                          </div>
+                          <div className="text-right font-mono text-[10px] space-x-3">
+                            <span className="text-gray-400"><b className="text-gray-500 font-normal">USG:</b> {p.usg}%</span>
+                            <span className="text-gray-400"><b className="text-gray-500 font-normal">TS:</b> {p.ts}%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recommended Player Props edges */}
+              <div className="p-4 bg-gray-950 border border-gray-800 rounded-xl space-y-3.5">
+                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest block border-b border-gray-900 pb-2">
+                  AI Edge Handcrafted Player Props
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {prediction.playerProps?.map((prop, idx) => (
+                    <div key={idx} className="p-3 bg-gray-900/60 border border-gray-805 rounded-xl flex flex-col justify-between">
+                      <div>
+                        <div className="flex justify-between items-start">
+                          <span className="text-[9px] font-mono text-gray-500 uppercase">{prop.playerName}</span>
+                          <span className="text-[8px] bg-blue-500/10 text-blue-400 border border-blue-500/15 px-1.5 py-0.5 rounded font-mono uppercase font-bold">{prop.overUnder}</span>
+                        </div>
+                        <div className="text-sm font-bold text-white mt-1.5">
+                          {prop.statType}: {prop.line}
+                        </div>
+                        <div className="text-[10px] text-gray-400 mt-1">
+                          Projected Line Score: <span className="text-white font-mono font-bold">{prop.projected}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="border-t border-gray-800 mt-3 pt-2.5 flex items-center justify-between">
+                        <span className="text-[9px] text-emerald-400 block font-bold font-mono">Edge: {prop.edgePct}%</span>
+                        <button 
+                          onClick={() => lockAndTrackPick(`${prop.playerName} ${prop.overUnder} ${prop.line} ${prop.statType}`, prop.edgePct, 3.0)}
+                          className="text-[9px] uppercase font-bold text-blue-400 hover:text-blue-300 flex items-center gap-1 font-mono transition-colors"
+                        >
+                          <Lock size={10} /> Track Prop
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action layout footer for saving game pick */}
+              <div className="border-t border-gray-800 pt-5 flex flex-col sm:flex-row justify-between items-center gap-4">
+                <span className="text-[9px] text-gray-500 uppercase font-mono">
+                  Grounded NBA Model calculation locked down
+                </span>
+                
+                <button 
+                  onClick={() => lockAndTrackPick()}
+                  className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-gray-950 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-2 "
+                >
+                  <Lock size={12} /> Lock Prediction & Track Result
+                </button>
+              </div>
+
+            </div>
+          )}
+
+        </div>
+
+      </div>
+
+      {/* Ledger Tracker and Mock-Global leaderboard components (Week 4 MVP specs) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        {/* Ledger column (7 cols) */}
+        <div className="lg:col-span-7 space-y-6">
+          <div className="bg-gray-905 border border-gray-805 rounded-xl p-5 shadow-lg space-y-4">
+            
+            <div className="flex items-center justify-between border-b border-gray-800 pb-3 mb-2">
+              <span className="text-[10px] text-white font-bold uppercase tracking-wider font-mono flex items-center gap-2">
+                <Trophy size={14} className="text-yellow-500" /> My Outcome Ledger ({trackedPicks.length})
+              </span>
+              <div className="flex items-center gap-2 text-[8px] font-mono text-gray-500">
+                <button 
+                  onClick={() => setSortBy('highest')}
+                  className={`px-2 py-1 uppercase font-bold rounded border ${
+                    sortBy === 'highest' ? 'bg-gray-850 border-gray-700 text-white' : 'border-transparent'
+                  }`}
+                >
+                  Highest Edge First
+                </button>
+                <button 
+                  onClick={() => setSortBy('recent')}
+                  className={`px-2 py-1 uppercase font-bold rounded border ${
+                    sortBy === 'recent' ? 'bg-gray-850 border-gray-700 text-white' : 'border-transparent'
+                  }`}
+                >
+                  Recent First
+                </button>
+              </div>
+            </div>
+
+            {/* Performance Stats banner */}
+            <div className="grid grid-cols-4 gap-3 bg-gray-950 p-4 rounded-xl border border-gray-800 text-center">
+              <div>
+                <span className="text-[8px] text-gray-500 font-bold uppercase tracking-widest block">Total Settled</span>
+                <span className="text-sm font-mono font-bold text-white mt-1 block">{statsSummary.total}</span>
+              </div>
+              <div>
+                <span className="text-[8px] text-emerald-500 font-bold uppercase tracking-widest block">Wins</span>
+                <span className="text-sm font-mono font-bold text-emerald-400 mt-1 block">{statsSummary.wins}</span>
+              </div>
+              <div>
+                <span className="text-[8px] text-rose-500 font-bold uppercase tracking-widest block">Losses</span>
+                <span className="text-sm font-mono font-bold text-rose-400 mt-1 block">{statsSummary.losses}</span>
+              </div>
+              <div>
+                <span className="text-[8px] text-blue-400 font-bold uppercase tracking-widest block">Win % Ratio</span>
+                <span className="text-sm font-mono font-bold text-blue-400 mt-1 block">{statsSummary.wr}%</span>
+              </div>
+            </div>
+
+            {/* Tracked records list */}
+            <div className="space-y-3.5 max-h-96 overflow-y-auto">
+              {trackedPicks
+                .sort((a, b) => {
+                  if (sortBy === 'highest') {
+                    return b.edge - a.edge;
+                  }
+                  return 0; // standard array state ordering
+                })
+                .map((p) => (
+                  <div key={p.id} className="p-4 bg-gray-900 border border-gray-800 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:border-gray-700 transition-colors">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] text-blue-400 font-mono">{p.createdAt}</span>
+                        <span className="text-[9px] font-mono font-bold text-emerald-400">-{p.edge} pts Edge</span>
+                      </div>
+                      <div className="text-sm font-bold text-white mt-1">
+                        {p.pick}
+                      </div>
+                      <span className="text-[9px] text-gray-500 font-mono uppercase block mt-0.5">{p.matchup}</span>
+                    </div>
+
+                    <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+                      {p.result === 'PENDING' ? (
+                        <div className="flex items-center gap-2 w-full md:w-auto">
+                          <button 
+                            onClick={() => updatePickResult(p.id, 'WIN')}
+                            className="flex-1 md:flex-none px-3.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[9px] font-black uppercase tracking-wider rounded border border-emerald-500/15"
+                          >
+                            Mark Win
+                          </button>
+                          <button 
+                            onClick={() => updatePickResult(p.id, 'LOSS')}
+                            className="flex-1 md:flex-none px-3.5 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[9px] font-black uppercase tracking-wider rounded border border-rose-500/15"
+                          >
+                            Mark Loss
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <span className={`px-3 py-1 rounded text-[9px] font-black font-mono tracking-wider uppercase border ${
+                            p.result === 'WIN' 
+                              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
+                              : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                          }`}>
+                            {p.result}
+                          </span>
+                        </div>
+                      )}
+                      
+                      <button 
+                        onClick={() => deleteTrackedPick(p.id)}
+                        className="p-1.5 hover:bg-gray-800 rounded transition-colors text-gray-500 hover:text-rose-500"
+                        title="Delete tracked pick"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+              {trackedPicks.length === 0 && (
+                <div className="text-center p-8 bg-gray-950 border border-gray-800 rounded-xl text-gray-500 text-[10px] uppercase font-mono tracking-wider select-none">
+                  🔐 No predictions locked. Activate engine above and lock targets to compile outcome ledger.
+                </div>
+              )}
+            </div>
+
+          </div>
+        </div>
+
+        {/* Global Competitor Leaderboard (5 cols) */}
+        <div className="lg:col-span-5">
+          <div className="bg-gray-905 border border-gray-805 rounded-xl p-5 shadow-lg space-y-4">
+            <span className="text-[10px] text-white font-bold uppercase tracking-wider font-mono flex items-center gap-2 border-b border-gray-800 pb-3 mb-2">
+              <Award size={14} className="text-yellow-500 animate-pulse" /> Daily Shark Leaderboard
+            </span>
+
+            <div className="space-y-2.5">
+              {mockLeaderboard.map((competitor, idx) => (
+                <div 
+                  key={idx} 
+                  className={`p-3.5 rounded-xl border flex justify-between items-center transition-all ${
+                    competitor.isUser 
+                      ? 'bg-blue-500/10 border-blue-500/30' 
+                      : 'bg-gray-900 border-gray-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-mono text-gray-500">#{idx + 1}</span>
+                    <div>
+                      <span className={`text-xs font-bold leading-none select-none block ${competitor.isUser ? 'text-blue-300' : 'text-gray-300'}`}>
+                        {competitor.name}
+                      </span>
+                      <span className="text-[9px] text-gray-500 font-mono tracking-widest uppercase block mt-1.5">
+                        {competitor.wins}W - {competitor.losses}L Record
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <span className="text-xs font-mono font-extrabold text-white">{competitor.winRate}%</span>
+                    <span className="text-[9px] text-gray-500 uppercase font-mono tracking-wider block mt-1">Accuracy</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  );
+};

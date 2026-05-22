@@ -1,5 +1,6 @@
 {
   "name": "F*&% Going On!",
-  "description": "An AI-powered betting intelligence system that utilizes simulated ML models and game theory to generate mathematically optimized parlay recommendations.",
-  "requestFramePermissions": []
+  "description": "An AI-powered betting intelligence system that utilizes real-time API data, simulated ML models, and game theory to generate mathematically optimized parlay recommendations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

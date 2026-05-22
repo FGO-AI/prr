@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Mail, Lock, ArrowRight, ShieldAlert, CheckCircle2, Zap, BrainCircuit, RefreshCw } from './Icons';
-import { User as UserType } from '../types';
+import { User as UserType, SubscriptionTier } from '../types';
 
 interface LoginPageProps {
   onComplete: (user: UserType) => void;
@@ -42,7 +42,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onComplete, onSignUp, onAc
         id: `user-${Date.now()}`,
         email: formData.email,
         name: formData.email.split('@')[0],
-        type: 'email'
+        type: 'email',
+        tier: SubscriptionTier.PRO // Default to PRO for existing users for demo
       });
     }, 1200);
   };

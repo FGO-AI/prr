@@ -18,9 +18,20 @@ const LegRow: React.FC<{ leg: BetLeg; onPlayerClick: (name: string) => void }> =
                     <button onClick={() => onPlayerClick(leg.playerName)} className="font-semibold text-gray-200 hover:text-emerald-400 transition-colors">
                         {leg.playerName}
                     </button>
-                    <div className="text-xs text-gray-500 font-mono">
-                        {leg.prediction.toUpperCase()} {leg.line} {leg.statType}
+                    <div className="text-xs text-gray-500 font-mono flex items-center gap-2">
+                        <span>{leg.prediction.toUpperCase()} {leg.line} {leg.statType}</span>
+                        {leg.gameTime && (
+                            <span className="text-[9px] text-gray-600 bg-gray-950 px-1 rounded border border-gray-800">
+                                {leg.gameTime}
+                            </span>
+                        )}
                     </div>
+                    {(leg.dataSource || leg.gameDate) && (
+                        <div className="text-[8px] text-gray-600 font-mono mt-1 flex items-center gap-2">
+                            {leg.dataSource && <span className="uppercase">Source: {leg.dataSource}</span>}
+                            {leg.gameDate && <span>• {leg.gameDate}</span>}
+                        </div>
+                    )}
                 </div>
             </div>
             <div className="text-right">

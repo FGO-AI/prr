@@ -39,7 +39,11 @@ import {
   Plus,
   Trash2,
   Target,
-  Settings2
+  Settings2,
+  Info,
+  ChevronDown,
+  ChevronUp,
+  Crown
 } from 'lucide-react';
 
 export { 
@@ -81,5 +85,9 @@ export {
   Plus,
   Trash2,
   Target,
-  Settings2
+  Settings2,
+  Info,
+  ChevronDown,
+  ChevronUp,
+  Crown
 };

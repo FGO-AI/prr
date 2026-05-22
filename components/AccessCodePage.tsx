@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Shield, ArrowRight, ShieldAlert, RefreshCw, Zap, BrainCircuit } from './Icons';
-import { User as UserType } from '../types';
+import { User as UserType, SubscriptionTier } from '../types';
 
 interface AccessCodePageProps {
   onComplete: (user: UserType) => void;
@@ -28,7 +28,8 @@ export const AccessCodePage: React.FC<AccessCodePageProps> = ({ onComplete, onLo
       onComplete({
         id: `guest-${Date.now()}`,
         name: 'Guest Operator',
-        type: 'access_code'
+        type: 'access_code',
+        tier: SubscriptionTier.FREE
       });
     }, 1200);
   };

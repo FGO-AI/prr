@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { generateParlays, fetchTrendingPicks, fetchGroundedOutcomes, settleUserPicks } from './services/geminiService';
-import { League, RiskLevel, UserInputState, ParlayRecommendation, BetLeg, User as UserType } from './types';
+import { League, RiskLevel, BettingApp, UserInputState, ParlayRecommendation, BetLeg, User as UserType, SubscriptionTier } from './types';
 import { InputForm } from './components/InputForm';
 import { PlayerProfileCard } from './components/PlayerProfileCard';
 import { LoadingScreen } from './components/LoadingScreen';
@@ -10,15 +10,34 @@ import { SignUpPage } from './components/SignUpPage';
 import { LoginPage } from './components/LoginPage';
 import { AboutPage } from './components/AboutPage';
 import { AccessCodePage } from './components/AccessCodePage';
+import { GameOutcomePredictor } from './components/GameOutcomePredictor';
 import { calculateEngineMetrics } from './services/projectionEngine';
 import { 
   BarChart3, ShieldAlert, Home, Zap, User, RefreshCw, 
-  Target, TrendingUp, Trophy, HistoryIcon, CheckCircle2, XCircle, ListIcon, Clock, Calendar, GitMerge, Timer,
+  Target, TrendingUp, Trophy, HistoryIcon, CheckCircle2, XCircle, ListIcon, Clock, Calendar, Timer,
   Search, Plus, Trash2, Cpu, ArrowRight, BrainCircuit, X, Settings2, AlertCircle, Globe, Shield
 } from './components/Icons';
 
 type ViewState = 'landing' | 'signup' | 'login' | 'app' | 'about' | 'access';
-type AppTab = 'search' | 'parlays' | 'history';
+type AppTab = 'search' | 'history' | 'ml';
+
+const TIER_MAX_SPINS = {
+  [SubscriptionTier.FREE]: 5,
+  [SubscriptionTier.PRO]: 5,
+  [SubscriptionTier.WHALE]: 15
+};
+
+const getTodayDatePT = () => {
+  const now = new Date();
+  const ptDate = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(now);
+  const [m, d, y] = ptDate.split('/');
+  return `${y}-${m}-${d}`;
+};
 
 function App() {
   const [currentView, setCurrentView] = useState<ViewState>('landing');
@@ -34,6 +53,7 @@ function App() {
   const [isFallbackActive, setIsFallbackActive] = useState(false);
 
   const [trendingPicks, setTrendingPicks] = useState<ParlayRecommendation[]>([]);
+  const [nbaMatchups, setNbaMatchups] = useState<any[]>([]);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   
@@ -43,7 +63,8 @@ function App() {
     bankroll: 1000,
     filters: '',
     statType: 'Any',
-    advancedMetric: 'Standard'
+    advancedMetric: 'Standard',
+    selectedApp: BettingApp.ALL
   });
 
   // Load history from localStorage based on user
@@ -60,8 +81,22 @@ function App() {
       } else {
         setUserPickHistory([]);
       }
+
+      // Handle Spin Reset
+      const today = getTodayDatePT();
+      if (currentUser.lastSpinResetDate !== today) {
+        const maxSpins = TIER_MAX_SPINS[currentUser.tier];
+        setCurrentUser(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            spinsRemaining: maxSpins,
+            lastSpinResetDate: today
+          };
+        });
+      }
     }
-  }, [currentUser]);
+  }, [currentUser?.id, currentUser?.tier]);
 
   // Background generation every 5 minutes
   useEffect(() => {
@@ -76,18 +111,40 @@ function App() {
   useEffect(() => {
     const getTrending = async () => {
         try {
-            const picks = await fetchTrendingPicks();
+            const picks = await fetchTrendingPicks(currentUser?.tier || SubscriptionTier.FREE);
             if (picks && picks.length > 0) {
               setTrendingPicks(picks);
             }
         } catch (err) { console.error(err); }
     };
     getTrending();
+  }, [currentUser]);
+
+  useEffect(() => {
+    const getMatchups = async () => {
+      try {
+        const res = await fetch('/api/nba/games/today');
+        if (res.ok) {
+          const data = await res.json();
+          setNbaMatchups(data);
+        }
+      } catch (e) {
+        console.error("Failed to fetch NBA games schedule in App", e);
+      }
+    };
+    getMatchups();
   }, []);
 
   const handleGenerate = async (isBackground = false, overrideParams?: UserInputState) => {
-    if (!isBackground) setIsLoading(true);
-    else setIsBackgroundLoading(true);
+    if (!isBackground) {
+      if (currentUser && currentUser.spinsRemaining !== undefined && currentUser.spinsRemaining <= 0) {
+        setError("DAILY QUOTA REACHED: Your account has exhausted its market spins for today. Access resets at 12:00 AM PT.");
+        return;
+      }
+      setIsLoading(true);
+    } else {
+      setIsBackgroundLoading(true);
+    }
     setError(null);
     setIsFallbackActive(false);
     
@@ -98,7 +155,15 @@ function App() {
     const params = overrideParams || formData;
     
     try {
-      const results = await generateParlays(params.league, params.riskLevel, params.filters, params.statType, params.advancedMetric);
+      const results = await generateParlays(
+        params.league, 
+        params.riskLevel, 
+        params.filters, 
+        params.statType, 
+        params.advancedMetric,
+        params.selectedApp,
+        currentUser?.tier || SubscriptionTier.FREE
+      );
       
       if (!results || results.length === 0) {
           setError(`MARKET STATUS: No active lines found. The AI couldn't locate verified props on FanDuel or DraftKings for this specific query.`);
@@ -116,11 +181,24 @@ function App() {
           const taggedResults = results.map(r => ({ ...r, isUserGenerated: true }));
           setRecommendations(taggedResults);
           
-          // Save to local history
-          const newHistory = [...taggedResults, ...userPickHistory].slice(0, 50);
-          setUserPickHistory(newHistory);
-          if (currentUser) {
-            localStorage.setItem(`user_pick_history_${currentUser.id}`, JSON.stringify(newHistory));
+          // Decrement spins if not background
+          if (!isBackground && currentUser) {
+            setCurrentUser(prev => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                spinsRemaining: Math.max(0, (prev.spinsRemaining || 1) - 1)
+              };
+            });
+          }
+
+          // Automatically save to history ONLY if it's a background sync
+          if (isBackground) {
+            const newHistory = [...taggedResults, ...userPickHistory].slice(0, 50);
+            setUserPickHistory(newHistory);
+            if (currentUser) {
+              localStorage.setItem(`user_pick_history_${currentUser.id}`, JSON.stringify(newHistory));
+            }
           }
           
           setLastSyncTime(new Date());
@@ -132,6 +210,16 @@ function App() {
       if (!isBackground) setIsLoading(false); 
       else setIsBackgroundLoading(false);
     }
+  };
+
+  const handlePlaceBet = (pick: ParlayRecommendation) => {
+    const newHistory = [pick, ...userPickHistory].slice(0, 50);
+    setUserPickHistory(newHistory);
+    if (currentUser) {
+      localStorage.setItem(`user_pick_history_${currentUser.id}`, JSON.stringify(newHistory));
+    }
+    // Optional: show a toast or feedback
+    alert("PICK LOCKED: Added to Outcomes Ledger for tracking.");
   };
 
   const handleVerifyHistory = async () => {
@@ -198,11 +286,23 @@ function App() {
           </div>
           <div className="flex items-center gap-4 text-sm text-gray-400">
              {currentUser && (
-               <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700">
-                  <User size={12} className="text-emerald-500" />
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-gray-300">
-                    {currentUser.name || currentUser.email}
-                  </span>
+               <div className="hidden md:flex items-center gap-3 px-3 py-1.5 bg-gray-800/50 rounded-lg border border-gray-700">
+                  <div className="flex items-center gap-2">
+                    <User size={12} className="text-emerald-500" />
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-gray-300">
+                      {currentUser.name || currentUser.email}
+                    </span>
+                  </div>
+                  <div className="h-3 w-px bg-gray-700"></div>
+                  <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-tighter ${
+                    currentUser.tier === SubscriptionTier.WHALE ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
+                    currentUser.tier === SubscriptionTier.PRO ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                    'bg-gray-700/50 text-gray-400 border border-gray-600'
+                  }`}>
+                    {currentUser.tier === SubscriptionTier.WHALE && <Trophy size={8} className="text-purple-400" />}
+                    {currentUser.tier === SubscriptionTier.PRO && <Zap size={8} className="text-blue-400" />}
+                    {currentUser.tier}
+                  </div>
                </div>
              )}
              <button onClick={() => { setCurrentUser(null); setCurrentView('landing'); }} className="flex items-center gap-2 p-2 sm:px-3 sm:py-1.5 rounded-lg hover:bg-gray-800 transition-all group">
@@ -212,7 +312,7 @@ function App() {
              <div className="h-4 w-px bg-gray-800"></div>
              <span className="flex items-center gap-2 text-emerald-400 font-medium font-mono text-[10px]">
                 <div className={`w-1.5 h-1.5 rounded-full ${isBackgroundLoading ? 'bg-blue-500 animate-ping' : 'bg-emerald-500 animate-pulse'}`}></div> 
-                <span className="hidden xs:inline uppercase">{isBackgroundLoading ? 'Background Sync' : `${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} Sync`}</span>
+                <span className="hidden xs:inline uppercase">{isBackgroundLoading ? 'Background Sync' : `Market Date: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} • PRE-GAME ONLY`}</span>
              </span>
           </div>
         </div>
@@ -223,11 +323,11 @@ function App() {
            <button onClick={() => setActiveTab('search')} className={`py-4 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] flex items-center gap-2 border-b-2 transition-all ${activeTab === 'search' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
               <Target size={14} /> Acquisition
            </button>
-           <button onClick={() => setActiveTab('parlays')} className={`py-4 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] flex items-center gap-2 border-b-2 transition-all ${activeTab === 'parlays' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
-              <GitMerge size={14} /> Constructor
-           </button>
            <button onClick={() => setActiveTab('history')} className={`py-4 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] flex items-center gap-2 border-b-2 transition-all ${activeTab === 'history' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
               <Trophy size={14} /> Outcomes
+           </button>
+           <button onClick={() => setActiveTab('ml')} className={`py-4 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] flex items-center gap-2 border-b-2 transition-all ${activeTab === 'ml' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
+              <Cpu size={14} /> Predictions
            </button>
         </div>
       </div>
@@ -235,7 +335,16 @@ function App() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {activeTab === 'search' && (
           <div className="space-y-6 sm:space-y-8 animate-fadeIn">
-            <InputForm formData={formData} setFormData={setFormData} onSubmit={() => handleGenerate(false)} isLoading={isLoading} lastSyncTime={lastSyncTime} />
+            <InputForm 
+              formData={formData} 
+              setFormData={setFormData} 
+              onSubmit={() => handleGenerate(false)} 
+              isLoading={isLoading} 
+              lastSyncTime={lastSyncTime}
+              spinsRemaining={currentUser?.spinsRemaining}
+              maxSpins={currentUser ? TIER_MAX_SPINS[currentUser.tier] : undefined}
+              nbaMatchups={nbaMatchups}
+            />
             
             {isFallbackActive && (
               <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center gap-3 animate-fadeIn">
@@ -246,7 +355,16 @@ function App() {
               </div>
             )}
 
-            <div className="space-y-6">
+            <div className="space-y-4">
+              {recommendations.length > 0 && (
+                <div className="flex items-center justify-between px-2">
+                  <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.3em] flex items-center gap-2">
+                    <ListIcon size={14} className="text-emerald-500" /> 
+                    {currentUser?.tier === SubscriptionTier.WHALE ? 'Top 15 Market Opportunities' : 'Top 5 Market Opportunities'}
+                  </h3>
+                  <span className="text-[9px] font-mono text-gray-600 uppercase">Sorted by Hit Probability (%)</span>
+                </div>
+              )}
               {error && (
                 <div className="bg-gray-900/80 border border-gray-800 text-gray-400 p-6 sm:p-12 rounded-2xl flex flex-col items-center text-center gap-6 animate-fadeIn">
                   <div className="p-4 bg-amber-500/10 rounded-full border border-amber-500/20">
@@ -268,7 +386,21 @@ function App() {
                   </div>
                 </div>
               )}
-              {recommendations.map((item, index) => <PlayerProfileCard key={index} data={item} bankroll={formData.bankroll} />)}
+              {recommendations
+                .sort((a, b) => {
+                  const aProb = a.jointProbAdjusted || 0;
+                  const bProb = b.jointProbAdjusted || 0;
+                  return bProb - aProb;
+                })
+                .map((item, index) => (
+                  <PlayerProfileCard 
+                    key={index} 
+                    data={item} 
+                    bankroll={formData.bankroll} 
+                    onPlaceBet={() => handlePlaceBet(item)}
+                    rank={index + 1}
+                  />
+                ))}
               {!isLoading && recommendations.length === 0 && !error && (
                 <div className="text-center py-20 border border-dashed border-gray-800 rounded-2xl bg-gray-900/20 flex flex-col items-center">
                   <Cpu size={32} className="text-gray-800 mb-4 animate-pulse" />
@@ -280,16 +412,53 @@ function App() {
           </div>
         )}
 
-        {activeTab === 'parlays' && (
-           <div className="text-center py-20 border border-dashed border-gray-800 rounded-2xl bg-gray-900/20">
-              <GitMerge size={32} className="text-gray-800 mx-auto mb-4" />
-              <h3 className="text-gray-600 font-bold text-xs tracking-[0.3em] uppercase">Constructor Offline</h3>
-              <p className="text-[9px] text-gray-700 font-mono mt-2 uppercase">Manual leg construction available in V4.0.</p>
-           </div>
-        )}
-        
+
         {activeTab === 'history' && (
            <div className="space-y-6 animate-fadeIn">
+              {/* Performance Summary */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-gray-900/50 border border-gray-800 p-4 rounded-2xl">
+                  <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Total Picks</div>
+                  <div className="text-2xl font-mono font-bold text-white">{userPickHistory.length}</div>
+                </div>
+                <div className="bg-gray-900/50 border border-gray-800 p-4 rounded-2xl">
+                  <div className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-1">Total Hits</div>
+                  <div className="text-2xl font-mono font-bold text-emerald-400">
+                    {userPickHistory.reduce((acc, pick) => acc + pick.legs.filter(l => l.settledStatus === 'Hit').length, 0)}
+                  </div>
+                </div>
+                <div className="bg-gray-900/50 border border-gray-800 p-4 rounded-2xl">
+                  <div className="text-[10px] font-bold text-rose-500 uppercase tracking-widest mb-1">Total Misses</div>
+                  <div className="text-2xl font-mono font-bold text-rose-400">
+                    {userPickHistory.reduce((acc, pick) => acc + pick.legs.filter(l => l.settledStatus === 'Miss').length, 0)}
+                  </div>
+                </div>
+                <div className="bg-gray-900/50 border border-gray-800 p-4 rounded-2xl">
+                  <div className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">Win Rate</div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-2xl font-mono font-bold text-blue-400">
+                      {(() => {
+                        const total = userPickHistory.reduce((acc, pick) => acc + pick.legs.filter(l => l.settledStatus === 'Hit' || l.settledStatus === 'Miss').length, 0);
+                        const hits = userPickHistory.reduce((acc, pick) => acc + pick.legs.filter(l => l.settledStatus === 'Hit').length, 0);
+                        return total > 0 ? `${((hits / total) * 100).toFixed(1)}%` : '0%';
+                      })()}
+                    </div>
+                    <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-blue-500 transition-all duration-1000" 
+                        style={{ 
+                          width: (() => {
+                            const total = userPickHistory.reduce((acc, pick) => acc + pick.legs.filter(l => l.settledStatus === 'Hit' || l.settledStatus === 'Miss').length, 0);
+                            const hits = userPickHistory.reduce((acc, pick) => acc + pick.legs.filter(l => l.settledStatus === 'Hit').length, 0);
+                            return total > 0 ? `${(hits / total) * 100}%` : '0%';
+                          })()
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-900/50 p-6 rounded-2xl border border-gray-800">
                   <div>
                     <h2 className="text-xl font-bold text-white tracking-tight uppercase flex items-center gap-3">
@@ -322,8 +491,33 @@ function App() {
                                <span className="text-[10px] font-mono text-gray-400 font-bold uppercase">Generated {new Date(pick.timestamp).toLocaleString()}</span>
                            </div>
                            <div className="flex items-center gap-2">
+                               <div className="flex items-center gap-1.5 bg-gray-900 px-2 py-1 rounded border border-gray-800 mr-2">
+                                  <span className={`text-[8px] font-bold font-mono uppercase ${
+                                    pick.legs.every(l => l.settledStatus === 'Hit') ? 'text-emerald-400' : 
+                                    pick.legs.some(l => l.settledStatus === 'Miss') ? 'text-rose-400' : 
+                                    'text-gray-500'
+                                  }`}>
+                                    {pick.legs.every(l => l.settledStatus === 'Hit') ? 'PARLAY HIT' : 
+                                     pick.legs.some(l => l.settledStatus === 'Miss') ? 'PARLAY MISS' : 
+                                     'PARLAY PENDING'}
+                                  </span>
+                               </div>
                                <Shield className="text-emerald-500" size={12} />
                                <span className="text-[8px] font-mono text-emerald-400 uppercase tracking-widest">Grounded Feed</span>
+                           </div>
+                        </div>
+                        <div className="px-4 py-2 bg-gray-900/50 border-b border-gray-800 flex items-center gap-4">
+                           <div className="text-[9px] font-mono text-gray-500 uppercase tracking-widest">Leg Hit Rate:</div>
+                           <div className="flex-1 h-1 bg-gray-800 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-emerald-500 transition-all duration-500" 
+                                style={{ 
+                                  width: `${(pick.legs.filter(l => l.settledStatus === 'Hit').length / pick.legs.length) * 100}%` 
+                                }}
+                              ></div>
+                           </div>
+                           <div className="text-[9px] font-mono text-emerald-400 font-bold">
+                              {pick.legs.filter(l => l.settledStatus === 'Hit').length}/{pick.legs.length}
                            </div>
                         </div>
                         <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -363,6 +557,9 @@ function App() {
               </div>
            </div>
         )}
+        {activeTab === 'ml' && (
+			<GameOutcomePredictor />
+		)}
       </main>
 
       <footer className="border-t border-gray-900 mt-12 py-8 bg-gray-950 text-center px-4">
