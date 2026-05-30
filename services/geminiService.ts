@@ -135,7 +135,34 @@ const parseResponse = (text: string): ParlayRecommendation[] => {
                     expectedPace: Number(leg.expectedPace) || 100,
                     leaguePace: Number(leg.leaguePace) || 100,
                     oppAllowed: Number(leg.oppAllowed) || 20,
-                    leagueAllowed: Number(leg.leagueAllowed) || 20
+                    leagueAllowed: Number(leg.leagueAllowed) || 20,
+                    
+                    // MLB-Specific Mathematical Projection Fields
+                    pitcherK9: leg.pitcherK9 !== undefined ? Number(leg.pitcherK9) : undefined,
+                    oppKRate: leg.oppKRate !== undefined ? Number(leg.oppKRate) : undefined,
+                    avgIpLast5: leg.avgIpLast5 !== undefined ? Number(leg.avgIpLast5) : undefined,
+                    isBullpenGame: leg.isBullpenGame !== undefined ? !!leg.isBullpenGame : undefined,
+                    pitchCountLimitFactor: leg.pitchCountLimitFactor !== undefined ? Number(leg.pitchCountLimitFactor) : undefined,
+                    parkFactor: leg.parkFactor !== undefined ? Number(leg.parkFactor) : undefined,
+                    parkHrFactor: leg.parkHrFactor !== undefined ? Number(leg.parkHrFactor) : undefined,
+                    parkRunFactor: leg.parkRunFactor !== undefined ? Number(leg.parkRunFactor) : undefined,
+                    handednessAdjustment: leg.handednessAdjustment !== undefined ? Number(leg.handednessAdjustment) : undefined,
+                    umpireKRate: leg.umpireKRate !== undefined ? Number(leg.umpireKRate) : undefined,
+                    homeAwayFactor: leg.homeAwayFactor !== undefined ? Number(leg.homeAwayFactor) : undefined,
+                    xBA: leg.xBA !== undefined ? Number(leg.xBA) : undefined,
+                    iso: leg.iso !== undefined ? Number(leg.iso) : undefined,
+                    oppPitcherEraPlus: leg.oppPitcherEraPlus !== undefined ? Number(leg.oppPitcherEraPlus) : undefined,
+                    platoonFactor: leg.platoonFactor !== undefined ? Number(leg.platoonFactor) : undefined,
+                    lineupSpot: leg.lineupSpot !== undefined ? Number(leg.lineupSpot) : undefined,
+                    teamPace: leg.teamPace !== undefined ? Number(leg.teamPace) : undefined,
+                    oppSpQuality: leg.oppSpQuality !== undefined ? Number(leg.oppSpQuality) : undefined,
+                    oppPitcherH9Factor: leg.oppPitcherH9Factor !== undefined ? Number(leg.oppPitcherH9Factor) : undefined,
+                    babipLuckAdjustment: leg.babipLuckAdjustment !== undefined ? Number(leg.babipLuckAdjustment) : undefined,
+                    xFip: leg.xFip !== undefined ? Number(leg.xFip) : undefined,
+                    oppWrcPlus: leg.oppWrcPlus !== undefined ? Number(leg.oppWrcPlus) : undefined,
+                    bbPct: leg.bbPct !== undefined ? Number(leg.bbPct) : undefined,
+                    projectedPA: leg.projectedPA !== undefined ? Number(leg.projectedPA) : undefined,
+                    league: leg.league
                 }));
 
             if (mappedLegs.length === 0) return null;
@@ -299,7 +326,8 @@ export const generateParlays = async (
   statType: string = 'Any',
   advancedMetric: string = 'Standard',
   selectedApp: BettingApp = BettingApp.ALL,
-  tier: SubscriptionTier = SubscriptionTier.FREE
+  tier: SubscriptionTier = SubscriptionTier.FREE,
+  limit?: number
 ): Promise<ParlayRecommendation[]> => {
     const marketDate = getEffectiveMarketDate();
     
@@ -315,6 +343,10 @@ export const generateParlays = async (
         recCount = 15;
         legsPerRec = 15;
         minProb = 0.65;
+    }
+
+    if (limit && limit > 0) {
+        recCount = limit;
     }
 
     const metricDepth = tier === SubscriptionTier.FREE ? "Standard" : "Deep Analytical with Historical Influence";
@@ -346,6 +378,22 @@ STRICT PLAY-SLATE FOCUS: You MUST focus search grounding on finding live player 
         console.error("Failed to load live schedule in generateParlays", e);
     }
 
+    let mlbPrompting = "";
+    if ((league as any) === League.MLB || (league as any) === 'MLB') {
+        mlbPrompting = `
+      MLB SPECIFIC INSTRUCTION (STATCAST & BASEBALL DATA INTEGRATION):
+      For MLB bets, we are running a specialized Statcast Mathematical engine. You MUST search and try to fetch the following advanced parameters for each player prop:
+      
+      - For Pitcher Strikeouts (most predictive prop): search for the pitcher's current season "pitcherK9", "avgIpLast5" starts, opposition/opponent "oppKRate" (typically 20% to 25% or 0.20-0.25), "umpireKRate" (often between 0.95 and 1.08), "handednessAdjustment" (platoon split, default 1.0 if balanced, 1.15 if lefty-righty advantage).
+      - For Batter Total Bases: search/estimate the batter's Statcast "xBA" (expected BA), SLG minus AVG which is "iso" (e.g., 0.170), opposing starting pitcher "oppPitcherEraPlus" (default 100), "platoonFactor" (default 1.12 if platoon advantage, 0.85 if platoon disadvantage), "lineupSpot" (which spot in the lineup, e.g. 1, 2, 3, 4, etc.), "parkHrFactor" (park HR multiplier, e.g., 1.0).
+      - For Hits props: search/estimate "xBA" (expected BA), "babipLuckAdjustment" (e.g. -0.02 if BABIP is is too high and regression is expected), "oppPitcherH9Factor" (default 1.0), and batting "lineupSpot".
+      - For Earned Runs (pitcher): search season "xFip" (standard: 3.5 - 4.5), pitcher "avgIpLast5", and opponent "oppWrcPlus" (standard: 100).
+      - For Walks (batter): search batter's base-on-balls percentage "bbPct" (e.g. 0.085 for 8.5%), and "projectedPA" (e.g., 4.2).
+      
+      Please populate these fields with realistic or actual grounded Statcast/FanGraphs metrics inside your JSON response legs if available (otherwise supply default/standard estimates as listed in the fields above).
+        `;
+    }
+
     const prompt = `
       URGENT MARKET SCAN: Find live player prop lines ${filterContext} for games occurring ONLY on ${marketDate}.
       ${appConstraint}
@@ -355,6 +403,8 @@ STRICT PLAY-SLATE FOCUS: You MUST focus search grounding on finding live player 
       If it is late in the day and no games remain for ${marketDate}, search for the NEXT available slate (tomorrow).
       
       ${scheduleContext}
+      
+      ${mlbPrompting}
       
       SEARCH DIRECTIVES:
       1. SEARCH GOOGLE for current ${league} player prop lines and injury reports.
@@ -389,7 +439,11 @@ STRICT PLAY-SLATE FOCUS: You MUST focus search grounding on finding live player 
     try {
         const data = await callAi({ prompt, temperature: 0.4, useSearch: true, thinking: "LOW" });
         console.log("Raw AI Response:", data.text);
-        return parseResponse(data.text || "");
+        const parsed = parseResponse(data.text || "");
+        return parsed.map(r => ({
+            ...r,
+            legs: r.legs.map(l => ({ ...l, league }))
+        }));
     } catch (err) {
         throw new Error("Market sync failed. The books might be locked for game-time or search grounding is timing out.");
     }

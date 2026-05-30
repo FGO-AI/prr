@@ -84,14 +84,13 @@ export const InputForm: React.FC<InputFormProps> = ({
      if (!formData.filters || formData.filters.length < 1) return { players: [], teams: [] };
      const lower = formData.filters.toLowerCase();
      const filtered = AUTOCOMPLETE_DATA.filter(item => 
-        (item.league === formData.league) && 
-        (item.label.toLowerCase().includes(lower))
+        item.label.toLowerCase().includes(lower)
      );
      return {
         players: filtered.filter(f => f.type === 'player').slice(0, 3),
         teams: filtered.filter(f => f.type === 'team').slice(0, 2)
      };
-  }, [formData.filters, formData.league]);
+  }, [formData.filters]);
 
   return (
     <div className="bg-gray-850 p-4 sm:p-6 rounded-xl border border-gray-800 shadow-lg relative z-30">
@@ -118,7 +117,7 @@ export const InputForm: React.FC<InputFormProps> = ({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6">
-        <div className="md:col-span-6 relative" ref={searchContainerRef}>
+        <div className="md:col-span-8 relative" ref={searchContainerRef}>
           <label className="block text-[9px] text-emerald-400 uppercase tracking-widest mb-1.5 font-bold flex items-center gap-1.5">
              <BrainCircuit size={10} /> Target Identification
           </label>
@@ -157,7 +156,7 @@ export const InputForm: React.FC<InputFormProps> = ({
             )}
           </div>
           
-          {nbaMatchups && nbaMatchups.length > 0 && formData.league === League.NBA && (
+          {nbaMatchups && nbaMatchups.length > 0 && (
             <div className="mt-2.5 flex flex-wrap gap-1.5 items-center">
               <span className="text-[8px] font-mono font-bold text-gray-500 uppercase tracking-widest mr-1">Active Series:</span>
               {nbaMatchups.map((game, idx) => {
@@ -185,16 +184,6 @@ export const InputForm: React.FC<InputFormProps> = ({
               })}
             </div>
           )}
-        </div>
-
-        <div className="md:col-span-2">
-          <label className="block text-[9px] text-gray-500 uppercase tracking-widest mb-1.5 font-bold">League</label>
-          <div className="relative">
-            <select name="league" value={formData.league} onChange={handleChange} className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-xs font-mono text-white appearance-none h-12 sm:h-auto">
-              {Object.values(League).map(l => <option key={l} value={l}>{l}</option>)}
-            </select>
-            <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 rotate-90 text-gray-600 pointer-events-none" size={14} />
-          </div>
         </div>
 
         <div className="md:col-span-2">

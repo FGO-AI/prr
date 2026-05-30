@@ -48,7 +48,11 @@ function App() {
   const [isBackgroundLoading, setIsBackgroundLoading] = useState(false);
   const [isSettling, setIsSettling] = useState(false);
   
-  const [recommendations, setRecommendations] = useState<ParlayRecommendation[]>([]);
+  const [recommendationsByLeague, setRecommendationsByLeague] = useState<Record<League, ParlayRecommendation[]>>({
+    [League.NBA]: [],
+    [League.NFL]: [],
+    [League.MLB]: []
+  });
   const [userPickHistory, setUserPickHistory] = useState<ParlayRecommendation[]>([]);
   const [isFallbackActive, setIsFallbackActive] = useState(false);
 
@@ -149,60 +153,155 @@ function App() {
     setIsFallbackActive(false);
     
     if (!isBackground) {
-        if (activeTab === 'search') setRecommendations([]);
+        if (activeTab === 'search') {
+          setRecommendationsByLeague({
+            [League.NBA]: [],
+            [League.NFL]: [],
+            [League.MLB]: []
+          });
+        }
     }
 
     const params = overrideParams || formData;
     
     try {
-      const results = await generateParlays(
-        params.league, 
-        params.riskLevel, 
-        params.filters, 
-        params.statType, 
-        params.advancedMetric,
-        params.selectedApp,
-        currentUser?.tier || SubscriptionTier.FREE
-      );
+      const leaguesToFetch = [League.NBA, League.NFL, League.MLB];
       
-      if (!results || results.length === 0) {
-          setError(`MARKET STATUS: No active lines found. The AI couldn't locate verified props on FanDuel or DraftKings for this specific query.`);
-      } else {
-          const searchTerm = params.filters.toLowerCase().trim();
-          const matchesSearch = searchTerm === '' || results.some(r => 
-            r.legs.some(l => 
-              l.playerName.toLowerCase().includes(searchTerm) || 
-              l.team.toLowerCase().includes(searchTerm)
-            )
-          );
-
-          setIsFallbackActive(!matchesSearch && searchTerm !== '');
-          
-          const taggedResults = results.map(r => ({ ...r, isUserGenerated: true }));
-          setRecommendations(taggedResults);
-          
-          // Decrement spins if not background
-          if (!isBackground && currentUser) {
-            setCurrentUser(prev => {
-              if (!prev) return null;
-              return {
-                ...prev,
-                spinsRemaining: Math.max(0, (prev.spinsRemaining || 1) - 1)
-              };
-            });
+      const resultsList = await Promise.all(
+        leaguesToFetch.map(async (lg) => {
+          try {
+            const res = await generateParlays(
+              lg, 
+              params.riskLevel, 
+              params.filters, 
+              params.statType, 
+              params.advancedMetric,
+              params.selectedApp,
+              currentUser?.tier || SubscriptionTier.FREE
+            );
+            return { league: lg, data: res || [] };
+          } catch (e) {
+            console.error(`Failed to fetch parlays for ${lg}`, e);
+            return { league: lg, data: [] };
           }
+        })
+      );
 
-          // Automatically save to history ONLY if it's a background sync
-          if (isBackground) {
-            const newHistory = [...taggedResults, ...userPickHistory].slice(0, 50);
-            setUserPickHistory(newHistory);
-            if (currentUser) {
-              localStorage.setItem(`user_pick_history_${currentUser.id}`, JSON.stringify(newHistory));
+      // Determine if there are off-season/empty leagues alongside active leagues
+      const inactiveLeagues = resultsList.filter(r => r.data.length === 0);
+      const activeLeagues = resultsList.filter(r => r.data.length > 0);
+
+      if (inactiveLeagues.length > 0 && activeLeagues.length > 0) {
+        // We have off-season leagues. Let's fetch more props for the active leagues to replace lost capacity.
+        const tier = currentUser?.tier || SubscriptionTier.FREE;
+        const limitCount = tier === SubscriptionTier.WHALE ? 25 : 12;
+
+        await Promise.all(
+          activeLeagues.map(async (activeItem) => {
+            try {
+              const extraData = await generateParlays(
+                activeItem.league,
+                params.riskLevel,
+                params.filters,
+                params.statType,
+                params.advancedMetric,
+                params.selectedApp,
+                tier,
+                limitCount
+              );
+              if (extraData && extraData.length > 0) {
+                // Merge activeItem.data and extraData while deduplicating by players involved
+                const seenKeys = new Set<string>();
+                const merged: ParlayRecommendation[] = [];
+
+                const getRecKey = (r: ParlayRecommendation) => {
+                  return r.legs.map(l => `${l.playerName.toLowerCase()}:${l.statType.toLowerCase()}:${l.line}`).sort().join('|');
+                };
+
+                // Add original first
+                activeItem.data.forEach(r => {
+                  const key = getRecKey(r);
+                  if (!seenKeys.has(key)) {
+                    seenKeys.add(key);
+                    merged.push(r);
+                  }
+                });
+
+                // Add extra
+                extraData.forEach(r => {
+                  const key = getRecKey(r);
+                  if (!seenKeys.has(key)) {
+                    seenKeys.add(key);
+                    merged.push(r);
+                  }
+                });
+
+                activeItem.data = merged;
+              }
+            } catch (err) {
+              console.error(`Failed to fetch extra props for in-season league ${activeItem.league}:`, err);
             }
+          })
+        );
+      }
+
+      const newRecs: Record<League, ParlayRecommendation[]> = {
+        [League.NBA]: [],
+        [League.NFL]: [],
+        [League.MLB]: []
+      };
+
+      let totalCount = 0;
+      let hasAnySearchMatch = false;
+
+      resultsList.forEach(({ league, data }) => {
+        const searchTerm = params.filters.toLowerCase().trim();
+        const matchesSearch = searchTerm === '' || data.some(r => 
+          r.legs.some(l => 
+            l.playerName.toLowerCase().includes(searchTerm) || 
+            l.team.toLowerCase().includes(searchTerm)
+          )
+        );
+        if (matchesSearch && searchTerm !== '') {
+          hasAnySearchMatch = true;
+        }
+
+        const taggedResults = data.map(r => ({ ...r, isUserGenerated: true }));
+        newRecs[league] = taggedResults;
+        totalCount += taggedResults.length;
+      });
+
+      if (totalCount === 0) {
+        setError(`MARKET STATUS: No active lines found across NBA, NFL, or MLB for this specific query.`);
+      } else {
+        const searchTerm = params.filters.toLowerCase().trim();
+        setIsFallbackActive(!hasAnySearchMatch && searchTerm !== '');
+        
+        setRecommendationsByLeague(newRecs);
+        
+        // Decrement spins if not background
+        if (!isBackground && currentUser) {
+          setCurrentUser(prev => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              spinsRemaining: Math.max(0, (prev.spinsRemaining || 1) - 1)
+            };
+          });
+        }
+
+        // Automatically save to history ONLY if it's a background sync
+        if (isBackground) {
+          const allTaggedResults = Object.values(newRecs).flat();
+          const newHistory = [...allTaggedResults, ...userPickHistory].slice(0, 50);
+          setUserPickHistory(newHistory);
+          if (currentUser) {
+            localStorage.setItem(`user_pick_history_${currentUser.id}`, JSON.stringify(newHistory));
           }
-          
-          setLastSyncTime(new Date());
-          setError(null);
+        }
+        
+        setLastSyncTime(new Date());
+        setError(null);
       }
     } catch (err: any) { 
       setError(err.message || "Error scanning market. Connection timed out."); 
@@ -265,7 +364,7 @@ function App() {
     setCurrentView('app');
   };
 
-  if (currentView === 'landing') return <LandingPage onEnter={() => setCurrentView('signup')} trendingPicks={trendingPicks} onAbout={() => setCurrentView('about')} hasActiveSession={recommendations.length > 0} onResume={() => setCurrentView('app')} />;
+  if (currentView === 'landing') return <LandingPage onEnter={() => setCurrentView('signup')} trendingPicks={trendingPicks} onAbout={() => setCurrentView('about')} hasActiveSession={recommendationsByLeague[League.NBA].length > 0 || recommendationsByLeague[League.NFL].length > 0 || recommendationsByLeague[League.MLB].length > 0} onResume={() => setCurrentView('app')} />;
   if (currentView === 'access') return <AccessCodePage onComplete={handleAuthComplete} onLogin={() => setCurrentView('login')} />;
   if (currentView === 'about') return <AboutPage onBack={() => setCurrentView('landing')} onStart={() => setCurrentView('signup')} />;
   if (currentView === 'signup') return <SignUpPage onComplete={handleAuthComplete} onLogin={() => setCurrentView('login')} onGuest={() => setCurrentView('access')} />;
@@ -355,16 +454,7 @@ function App() {
               </div>
             )}
 
-            <div className="space-y-4">
-              {recommendations.length > 0 && (
-                <div className="flex items-center justify-between px-2">
-                  <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.3em] flex items-center gap-2">
-                    <ListIcon size={14} className="text-emerald-500" /> 
-                    {currentUser?.tier === SubscriptionTier.WHALE ? 'Top 15 Market Opportunities' : 'Top 5 Market Opportunities'}
-                  </h3>
-                  <span className="text-[9px] font-mono text-gray-600 uppercase">Sorted by Hit Probability (%)</span>
-                </div>
-              )}
+            <div className="space-y-6">
               {error && (
                 <div className="bg-gray-900/80 border border-gray-800 text-gray-400 p-6 sm:p-12 rounded-2xl flex flex-col items-center text-center gap-6 animate-fadeIn">
                   <div className="p-4 bg-amber-500/10 rounded-full border border-amber-500/20">
@@ -386,22 +476,56 @@ function App() {
                   </div>
                 </div>
               )}
-              {recommendations
-                .sort((a, b) => {
-                  const aProb = a.jointProbAdjusted || 0;
-                  const bProb = b.jointProbAdjusted || 0;
-                  return bProb - aProb;
-                })
-                .map((item, index) => (
-                  <PlayerProfileCard 
-                    key={index} 
-                    data={item} 
-                    bankroll={formData.bankroll} 
-                    onPlaceBet={() => handlePlaceBet(item)}
-                    rank={index + 1}
-                  />
-                ))}
-              {!isLoading && recommendations.length === 0 && !error && (
+
+              {/* Show different sections for different leagues */}
+              {Object.values(League).map((leagueHex) => {
+                const league = leagueHex as League;
+                const recs = recommendationsByLeague[league] || [];
+                const hasScan = lastSyncTime !== null;
+                
+                if (!hasScan) return null;
+                // STRICT DIRECTIVE: If league has no props (e.g. is in off-season), don't show it at all
+                if (recs.length === 0) return null;
+
+                return (
+                  <div key={league} className="space-y-4 border-l-2 border-dashed border-gray-800/80 pl-4 py-2 hover:border-emerald-500/50 transition-all animate-fadeIn">
+                    <div className="flex items-center justify-between px-2 pt-4">
+                      <h3 className="text-xs font-extrabold text-white uppercase tracking-[0.2em] flex items-center gap-2.5">
+                        <span className={`w-2.5 h-2.5 rounded-full ${
+                          league === League.NBA ? 'bg-orange-500 animate-pulse' :
+                          league === League.NFL ? 'bg-blue-500' :
+                          'bg-emerald-500'
+                        }`}></span>
+                        {league === League.NBA ? 'National Basketball Association (NBA)' :
+                         league === League.NFL ? 'National Football League (NFL) - Classic' :
+                         'Major League Baseball (MLB)'}
+                        <span className="text-[10px] text-gray-500 font-mono font-bold tracking-tight">({recs.length} Opportunities)</span>
+                      </h3>
+                      {recs.length > 0 && (
+                        <span className="text-[9px] font-mono text-gray-600 uppercase tracking-widest">Sorted by Hit Probability</span>
+                      )}
+                    </div>
+                    
+                    <div className="space-y-4">
+                      {recs
+                        .sort((a, b) => (b.jointProbAdjusted || 0) - (a.jointProbAdjusted || 0))
+                        .map((item, index) => (
+                          <PlayerProfileCard 
+                            key={index} 
+                            data={item} 
+                            bankroll={formData.bankroll} 
+                            onPlaceBet={() => handlePlaceBet(item)}
+                            rank={index + 1}
+                          />
+                        ))
+                      }
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* General Target Discovery Standby if no scan has been performed yet */}
+              {!lastSyncTime && !isLoading && !error && (
                 <div className="text-center py-20 border border-dashed border-gray-800 rounded-2xl bg-gray-900/20 flex flex-col items-center">
                   <Cpu size={32} className="text-gray-800 mb-4 animate-pulse" />
                   <h3 className="text-gray-600 font-bold text-xs tracking-[0.3em] uppercase">Target Discovery Standby</h3>

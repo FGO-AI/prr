@@ -448,45 +448,89 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data, bank
                             </div>
 
                             {/* Detailed Multiplier Breakdown */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-                                <MetricBadge 
-                                    label="Confidence Score" 
-                                    value={`${(metrics.confidence * 100).toFixed(0)}%`} 
-                                    sub="Bayesian Shrinkage Index"
-                                    icon={<Database size={14} />} 
-                                />
-                                <MetricBadge 
-                                    label="Volatility (σ)" 
-                                    value={metrics.sigmaFinal.toFixed(2)} 
-                                    sub="Pace-Adjusted Variance"
-                                    icon={<Activity size={14} />} 
-                                />
-                                <MetricBadge 
-                                    label="Pace Multiplier" 
-                                    value={`${metrics.mPace.toFixed(2)}x`} 
-                                    sub="Tempo Adjustment"
-                                    icon={<RefreshCw size={14} />} 
-                                />
-                                <MetricBadge 
-                                    label="Opponent Factor" 
-                                    value={`${metrics.mOpp.toFixed(2)}x`} 
-                                    sub="Defensive Logic"
-                                    icon={<Shield size={14} />} 
-                                />
-                            </div>
+                            {leg.league === League.MLB || leg.league === 'MLB' ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6 animate-fadeIn">
+                                    <MetricBadge 
+                                        label="Umpire Tendency" 
+                                        value={leg.statType.toLowerCase().includes('strikeout') || leg.statType.toLowerCase().includes('ks') ? `${(leg.umpireKRate || 1.0).toFixed(2)}x` : '1.00x (Zone)'} 
+                                        sub="Strikes/Out Rate Weight"
+                                        icon={<Target size={14} />} 
+                                    />
+                                    <MetricBadge 
+                                        label="Volatility (σ)" 
+                                        value={metrics.sigmaFinal.toFixed(2)} 
+                                        sub="Statcast Variance"
+                                        icon={<Activity size={14} />} 
+                                    />
+                                    <MetricBadge 
+                                        label="Platoon Matchup" 
+                                        value={`${(leg.platoonFactor || 1.00).toFixed(2)}x`} 
+                                        sub="Handedness Platoon Bias"
+                                        icon={<Shield size={14} />} 
+                                    />
+                                    <MetricBadge 
+                                        label="Park Factor" 
+                                        value={`${(leg.parkHrFactor || leg.parkFactor || leg.parkRunFactor || 1.0).toFixed(2)}x`} 
+                                        sub="Stadium Index Adjustment"
+                                        icon={<Globe size={14} />} 
+                                    />
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                                    <MetricBadge 
+                                        label="Confidence Score" 
+                                        value={`${((metrics.confidence || 0) * 100).toFixed(0)}%`} 
+                                        sub="Bayesian Shrinkage Index"
+                                        icon={<Database size={14} />} 
+                                    />
+                                    <MetricBadge 
+                                        label="Volatility (σ)" 
+                                        value={(metrics.sigmaFinal || 0).toFixed(2)} 
+                                        sub="Pace-Adjusted Variance"
+                                        icon={<Activity size={14} />} 
+                                    />
+                                    <MetricBadge 
+                                        label="Pace Multiplier" 
+                                        value={`${(metrics.mPace || 1).toFixed(2)}x`} 
+                                        sub="Tempo Adjustment"
+                                        icon={<RefreshCw size={14} />} 
+                                    />
+                                    <MetricBadge 
+                                        label="Opponent Factor" 
+                                        value={`${(metrics.mOpp || 1).toFixed(2)}x`} 
+                                        sub="Defensive Logic"
+                                        icon={<Shield size={14} />} 
+                                    />
+                                </div>
+                            )}
                             
                             {/* AI Reasoner Box */}
                             <div className="p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 flex items-start gap-4 mb-6">
                                 <div className="mt-1">
                                     <AlertCircle size={18} className="text-emerald-500" />
                                 </div>
-                                <div>
-                                    <p className="text-[11px] text-gray-400 leading-relaxed">
-                                        <span className="text-emerald-400 font-bold uppercase tracking-widest mr-2">Model Architect:</span> 
-                                        Utilizing the <span className="text-white font-bold">{metrics.modelUsed}</span> distribution, we have identified a high-probability divergence in the <span className="text-white font-bold">{leg.statType}</span> market. Our mean of <span className="text-white font-bold">{metrics.muFinal.toFixed(1)}</span> accounts for situational pace volatility (σ={metrics.sigmaFinal.toFixed(1)}), creating a <span className={`font-bold ${metrics.edge > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                            {metrics.edge > 0 ? '+' : ''}{metrics.edge.toFixed(1)}% ROI edge
-                                        </span> against current market pricing.
-                                    </p>
+                                <div className="w-full">
+                                    {leg.league === League.MLB || leg.league === 'MLB' ? (
+                                        <div className="text-[11px] text-gray-400 leading-relaxed space-y-1.5 w-full">
+                                            <p>
+                                                <span className="text-emerald-400 font-bold uppercase tracking-widest mr-2">MLB Statcast Engine:</span> 
+                                                Utilizing the <span className="text-white font-bold">{metrics.modelUsed}</span> distribution, we completed a high-frequency projection on the <span className="text-white font-bold">{leg.statType}</span> market.
+                                            </p>
+                                            <div className="p-2.5 bg-gray-950/90 rounded border border-gray-800 font-mono text-[9.5px] text-emerald-300">
+                                                {metrics.mlbFormulaSummary || "Projected expectation = (Statcast Grounding Variables)"}
+                                            </div>
+                                            <p className="font-mono text-[10px]">
+                                                Signal Resolution: <span className="text-emerald-400 font-bold">{metrics.mlbEdgeSignal || "No bet"}</span>
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <p className="text-[11px] text-gray-400 leading-relaxed">
+                                            <span className="text-emerald-400 font-bold uppercase tracking-widest mr-2">Model Architect:</span> 
+                                            Utilizing the <span className="text-white font-bold">{metrics.modelUsed}</span> distribution, we have identified a high-probability divergence in the <span className="text-white font-bold">{leg.statType}</span> market. Our mean of <span className="text-white font-bold">{metrics.muFinal.toFixed(1)}</span> accounts for situational pace volatility (σ={metrics.sigmaFinal?.toFixed(1)}), creating a <span className={`font-bold ${metrics.edge > 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                {metrics.edge > 0 ? '+' : ''}{metrics.edge.toFixed(1)}% ROI edge
+                                            </span> against current market pricing.
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
