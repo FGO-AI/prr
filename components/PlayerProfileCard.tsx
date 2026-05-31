@@ -114,6 +114,52 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data, bank
     const [isRecalculating, setIsRecalculating] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
 
+    // NFL-Specific Local States
+    const [avgPassYardsL5, setAvgPassYardsL5] = useState<number>(leg?.avgPassYardsL5 || leg?.x10 || 240);
+    const [seasonAvgPassYards, setSeasonAvgPassYards] = useState<number>(leg?.seasonAvgPassYards || leg?.xSeason || 235);
+    const [oppPassYardsAllowed, setOppPassYardsAllowed] = useState<number>(leg?.oppPassYardsAllowed || leg?.oppAllowed || 220);
+    const [qbTdRate, setQbTdRate] = useState<number>(leg?.qbTdRate || 0.045);
+    const [qbAttemptsAvg, setQbAttemptsAvg] = useState<number>(leg?.qbAttemptsAvg || leg?.xSeason || 34);
+    const [rzOppRate, setRzOppRate] = useState<number>(leg?.rzOppRate || 1.0);
+    const [oppPosTdRate, setOppPosTdRate] = useState<number>(leg?.oppPosTdRate || 1.0);
+    const [oppPassFunnel, setOppPassFunnel] = useState<number>(leg?.oppPassFunnel || 1.0);
+    const [impliedGameTotal, setImpliedGameTotal] = useState<number>(leg?.impliedGameTotal || 44.5);
+    const [spreadPoints, setSpreadPoints] = useState<number>(leg?.spreadPoints || 0);
+    
+    // Toggles
+    const [missingWR, setMissingWR] = useState<boolean>(leg?.missingWR || false);
+    const [domeToColdOutdoor, setDomeToColdOutdoor] = useState<boolean>(leg?.domeToColdOutdoor || false);
+    const [windSpeedMph, setWindSpeedMph] = useState<number>(leg?.windSpeedMph || 0);
+    const [offBye, setOffBye] = useState<boolean>(leg?.offBye || false);
+    const [shortWeek, setShortWeek] = useState<boolean>(leg?.shortWeek || false);
+    const [facingManCoverage, setFacingManCoverage] = useState<boolean>(leg?.facingManCoverage || false);
+    
+    // Rushing
+    const [carriesProjection, setCarriesProjection] = useState<number>(leg?.carriesProjection || leg?.xSeason || 14);
+    const [avgYpc, setAvgYpc] = useState<number>(leg?.avgYpc || 4.2);
+    const [olineRunBlockRank, setOlineRunBlockRank] = useState<number>(leg?.olineRunBlockRank || 16);
+    const [rbRole, setRbRole] = useState<'workhorse' | 'committee' | 'third_down'>(leg?.rbRole || 'committee');
+    const [isHandcuff, setIsHandcuff] = useState<boolean>(leg?.isHandcuff || false);
+    const [teamRushTendency, setTeamRushTendency] = useState<number>(leg?.teamRushTendency || 0);
+    
+    // Receiving
+    const [targetSharePct, setTargetSharePct] = useState<number>(leg?.targetSharePct || 0.18);
+    const [teamProjPassAttempts, setTeamProjPassAttempts] = useState<number>(leg?.teamProjPassAttempts || 32);
+    const [avgYpt, setAvgYpt] = useState<number>(leg?.avgYpt || 8.0);
+    const [oppCoverageGrade, setOppCoverageGrade] = useState<number>(leg?.oppCoverageGrade || 1.0);
+    const [separationRate, setSeparationRate] = useState<number>(leg?.separationRate || 1.0);
+    const [routeConcept, setRouteConcept] = useState<'deep' | 'intermediate' | 'short'>(leg?.routeConcept || 'intermediate');
+    const [catchRatePct, setCatchRatePct] = useState<number>(leg?.catchRatePct || 0.65);
+    
+    // Anytime TD
+    const [rzTargetSharePct, setRzTargetSharePct] = useState<number>(leg?.rzTargetSharePct || 0.15);
+    const [teamRzTrips, setTeamRzTrips] = useState<number>(leg?.teamRzTrips || 3.0);
+    const [playerRzTdRate, setPlayerRzTdRate] = useState<number>(leg?.playerRzTdRate || 0.25);
+    const [oppRzTdAllowedRate, setOppRzTdAllowedRate] = useState<number>(leg?.oppRzTdAllowedRate || 1.0);
+    
+    const [isDivisional, setIsDivisional] = useState<boolean>(leg?.isDivisional || false);
+    const [isPlayoffAtmosphere, setIsPlayoffAtmosphere] = useState<boolean>(leg?.isPlayoffAtmosphere || false);
+
     useEffect(() => {
         if (leg) {
             setCustomLine(leg.line);
@@ -122,6 +168,48 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data, bank
             setCustomMins(leg.expectedMins || 30);
             setCustomPace(leg.expectedPace || 100);
             setCustomOppFactor(leg.oppAllowed || 20);
+
+            // Reset NFL states
+            setAvgPassYardsL5(leg.avgPassYardsL5 || leg.x10 || 240);
+            setSeasonAvgPassYards(leg.seasonAvgPassYards || leg.xSeason || 235);
+            setOppPassYardsAllowed(leg.oppPassYardsAllowed || leg.oppAllowed || 220);
+            setQbTdRate(leg.qbTdRate || 0.045);
+            setQbAttemptsAvg(leg.qbAttemptsAvg || leg.xSeason || 34);
+            setRzOppRate(leg.rzOppRate || 1.0);
+            setOppPosTdRate(leg.oppPosTdRate || 1.0);
+            setOppPassFunnel(leg.oppPassFunnel || 1.0);
+            setImpliedGameTotal(leg.impliedGameTotal || 44.5);
+            setSpreadPoints(leg.spreadPoints || 0);
+            
+            setMissingWR(leg.missingWR || false);
+            setDomeToColdOutdoor(leg.domeToColdOutdoor || false);
+            setWindSpeedMph(leg.windSpeedMph || 0);
+            setOffBye(leg.offBye || false);
+            setShortWeek(leg.shortWeek || false);
+            setFacingManCoverage(leg.facingManCoverage || false);
+            
+            setCarriesProjection(leg.carriesProjection || leg.xSeason || 14);
+            setAvgYpc(leg.avgYpc || 4.2);
+            setOlineRunBlockRank(leg.olineRunBlockRank || 16);
+            setRbRole(leg.rbRole || 'committee');
+            setIsHandcuff(leg.isHandcuff || false);
+            setTeamRushTendency(leg.teamRushTendency || 0);
+            
+            setTargetSharePct(leg.targetSharePct || 0.18);
+            setTeamProjPassAttempts(leg.teamProjPassAttempts || 32);
+            setAvgYpt(leg.avgYpt || 8.0);
+            setOppCoverageGrade(leg.oppCoverageGrade || 1.0);
+            setSeparationRate(leg.separationRate || 1.0);
+            setRouteConcept(leg.routeConcept || 'intermediate');
+            setCatchRatePct(leg.catchRatePct || 0.65);
+            
+            setRzTargetSharePct(leg.rzTargetSharePct || 0.15);
+            setTeamRzTrips(leg.teamRzTrips || 3.0);
+            setPlayerRzTdRate(leg.playerRzTdRate || 0.25);
+            setOppRzTdAllowedRate(leg.oppRzTdAllowedRate || 1.0);
+            
+            setIsDivisional(leg.isDivisional || false);
+            setIsPlayoffAtmosphere(leg.isPlayoffAtmosphere || false);
         }
     }, [leg]);
 
@@ -134,9 +222,53 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data, bank
             bookOdds: customOdds,
             expectedMins: customMins,
             expectedPace: customPace,
-            oppAllowed: customOppFactor
+            oppAllowed: customOppFactor,
+            
+            // NFL Parameters
+            avgPassYardsL5,
+            seasonAvgPassYards,
+            oppPassYardsAllowed,
+            qbTdRate,
+            qbAttemptsAvg,
+            rzOppRate,
+            oppPosTdRate,
+            oppPassFunnel,
+            impliedGameTotal,
+            spreadPoints,
+            missingWR,
+            domeToColdOutdoor,
+            windSpeedMph,
+            offBye,
+            shortWeek,
+            facingManCoverage,
+            carriesProjection,
+            avgYpc,
+            olineRunBlockRank,
+            rbRole,
+            isHandcuff,
+            teamRushTendency,
+            targetSharePct,
+            teamProjPassAttempts,
+            avgYpt,
+            oppCoverageGrade,
+            separationRate,
+            routeConcept,
+            catchRatePct,
+            rzTargetSharePct,
+            teamRzTrips,
+            playerRzTdRate,
+            oppRzTdAllowedRate,
+            isDivisional,
+            isPlayoffAtmosphere
         });
-    }, [leg, customLine, customPrediction, customOdds, customMins, customPace, customOppFactor]);
+    }, [
+        leg, customLine, customPrediction, customOdds, customMins, customPace, customOppFactor,
+        avgPassYardsL5, seasonAvgPassYards, oppPassYardsAllowed, qbTdRate, qbAttemptsAvg, rzOppRate, oppPosTdRate,
+        oppPassFunnel, impliedGameTotal, spreadPoints, missingWR, domeToColdOutdoor, windSpeedMph, offBye, shortWeek,
+        facingManCoverage, carriesProjection, avgYpc, olineRunBlockRank, rbRole, isHandcuff, teamRushTendency,
+        targetSharePct, teamProjPassAttempts, avgYpt, oppCoverageGrade, separationRate, routeConcept, catchRatePct,
+        rzTargetSharePct, teamRzTrips, playerRzTdRate, oppRzTdAllowedRate, isDivisional, isPlayoffAtmosphere
+    ]);
 
     const handleRecalculate = () => {
         setIsRecalculating(true);
@@ -338,35 +470,247 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data, bank
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-3 gap-3">
-                                    <div className="space-y-2">
-                                        <label className="text-[8px] text-gray-600 uppercase font-mono font-bold tracking-widest">Mins</label>
-                                        <input 
-                                            type="number" 
-                                            value={customMins} 
-                                            onChange={(e) => setCustomMins(parseFloat(e.target.value) || 0)} 
-                                            className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-2 rounded-lg focus:border-emerald-500 outline-none transition-all" 
-                                        />
+                                {leg.league === League.NFL || leg.league === 'NFL' ? (
+                                    <div className="space-y-4 pt-2 border-t border-gray-800">
+                                        <div className="text-[10px] font-bold text-blue-400 uppercase tracking-widest font-mono">
+                                            NFL Model Settings: {metrics?.nflPropType?.toUpperCase()?.replace('_', ' ') || 'LEG ADVANCED'}
+                                        </div>
+                                        
+                                        {metrics?.nflPropType === 'passing_yards' && (
+                                            <div className="space-y-3 animate-fadeIn">
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">L5 Avg Yds</label>
+                                                        <input type="number" value={avgPassYardsL5} onChange={e => setAvgPassYardsL5(parseFloat(e.target.value) || 0)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg focus:border-blue-500 outline-none" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">Season Avg</label>
+                                                        <input type="number" value={seasonAvgPassYards} onChange={e => setSeasonAvgPassYards(parseFloat(e.target.value) || 0)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg focus:border-blue-500 outline-none" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">Opp Allowed</label>
+                                                        <input type="number" value={oppPassYardsAllowed} onChange={e => setOppPassYardsAllowed(parseFloat(e.target.value) || 0)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg focus:border-blue-500 outline-none" />
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-col gap-2 bg-gray-950 p-2.5 rounded-xl border border-gray-900">
+                                                    <label className="text-[8px] text-gray-400 font-mono font-bold flex justify-between">
+                                                        <span>Wind Speed: {windSpeedMph} MPH</span>
+                                                    </label>
+                                                    <input type="range" min="0" max="35" value={windSpeedMph} onChange={e => setWindSpeedMph(parseInt(e.target.value) || 0)} className="w-full accent-blue-500" />
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2 mt-2">
+                                                    <label className="flex items-center gap-2 text-[9px] text-gray-400 font-mono cursor-pointer bg-gray-950 p-2 rounded-lg border border-gray-850 hover:border-blue-500/50">
+                                                        <input type="checkbox" checked={missingWR} onChange={e => setMissingWR(e.target.checked)} className="rounded" />
+                                                        <span>Missing Top WR</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 text-[9px] text-gray-400 font-mono cursor-pointer bg-gray-950 p-2 rounded-lg border border-gray-850 hover:border-blue-500/50">
+                                                        <input type="checkbox" checked={domeToColdOutdoor} onChange={e => setDomeToColdOutdoor(e.target.checked)} className="rounded" />
+                                                        <span>Dome to Cold</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 text-[9px] text-gray-400 font-mono cursor-pointer bg-gray-950 p-2 rounded-lg border border-gray-850 hover:border-blue-500/50">
+                                                        <input type="checkbox" checked={offBye} onChange={e => setOffBye(e.target.checked)} className="rounded" />
+                                                        <span>Off Bye Week</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 text-[9px] text-gray-400 font-mono cursor-pointer bg-gray-950 p-2 rounded-lg border border-gray-850 hover:border-blue-500/50">
+                                                        <input type="checkbox" checked={shortWeek} onChange={e => setShortWeek(e.target.checked)} className="rounded" />
+                                                        <span>Short Week</span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {(metrics?.nflPropType === 'passing_attempts' || metrics?.nflPropType === 'passing_tds') && (
+                                            <div className="space-y-3 animate-fadeIn">
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">QB Avg Attempts</label>
+                                                        <input type="number" value={qbAttemptsAvg} onChange={e => setQbAttemptsAvg(parseFloat(e.target.value) || 0)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">Opp Pass Funnel (x)</label>
+                                                        <input type="number" step="0.05" value={oppPassFunnel} onChange={e => setOppPassFunnel(parseFloat(e.target.value) || 1.0)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg" />
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">Implied Game Total</label>
+                                                        <input type="number" value={impliedGameTotal} onChange={e => setImpliedGameTotal(parseFloat(e.target.value) || 44.5)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">Vegas Spread</label>
+                                                        <input type="number" step="0.5" value={spreadPoints} onChange={e => setSpreadPoints(parseFloat(e.target.value) || 0)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg" />
+                                                    </div>
+                                                </div>
+                                                {metrics?.nflPropType === 'passing_tds' && (
+                                                    <div className="grid grid-cols-3 gap-1 bg-gray-950 p-2 rounded-xl border border-gray-900">
+                                                        <div>
+                                                            <label className="text-[6px] text-gray-500 uppercase font-mono">QB TD%</label>
+                                                            <input type="number" step="0.005" value={qbTdRate} onChange={e => setQbTdRate(parseFloat(e.target.value) || 0)} className="w-full bg-gray-900 text-white font-mono text-[9px] p-1 rounded" />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[6px] text-gray-500 uppercase font-mono">RZ Opp Rate</label>
+                                                            <input type="number" step="0.05" value={rzOppRate} onChange={e => setRzOppRate(parseFloat(e.target.value) || 0)} className="w-full bg-gray-900 text-white font-mono text-[9px] p-1 rounded" />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[6px] text-gray-500 uppercase font-mono">Opp Pos TD Allowed</label>
+                                                            <input type="number" step="0.05" value={oppPosTdRate} onChange={e => setOppPosTdRate(parseFloat(e.target.value) || 0)} className="w-full bg-gray-900 text-white font-mono text-[9px] p-1 rounded" />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <label className="flex items-center gap-2 text-[9px] text-gray-400 font-mono cursor-pointer bg-gray-950 p-2 rounded-lg border border-gray-850 hover:border-blue-500/50">
+                                                        <input type="checkbox" checked={missingWR} onChange={e => setMissingWR(e.target.checked)} className="rounded" />
+                                                        <span>Missing Top WR</span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {(metrics?.nflPropType === 'rushing_yards' || metrics?.nflPropType === 'rushing_carries') && (
+                                            <div className="space-y-3 animate-fadeIn">
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">Proj Carries</label>
+                                                        <input type="number" value={carriesProjection} onChange={e => setCarriesProjection(parseFloat(e.target.value) || 0)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">Avg YPC</label>
+                                                        <input type="number" step="0.1" value={avgYpc} onChange={e => setAvgYpc(parseFloat(e.target.value) || 0)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">O-Line Rank</label>
+                                                        <input type="number" min="1" max="32" value={olineRunBlockRank} onChange={e => setOlineRunBlockRank(parseInt(e.target.value) || 16)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg" />
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-col gap-1.5 bg-gray-950 p-2 rounded-xl border border-gray-900">
+                                                    <label className="text-[8px] text-gray-500 font-mono font-bold">Team Rush Tendency Offset (e.g. +0.10)</label>
+                                                    <input type="number" step="0.05" value={teamRushTendency} onChange={e => setTeamRushTendency(parseFloat(e.target.value) || 0)} className="w-full bg-gray-900 text-white font-mono text-[10px] px-2 py-1 rounded" />
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">RB Role</label>
+                                                        <select value={rbRole} onChange={e => setRbRole(e.target.value as any)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg">
+                                                            <option value="workhorse">Workhorse (70%+ snap)</option>
+                                                            <option value="committee">Committee (40-60%)</option>
+                                                            <option value="third_down">3rd Down Back</option>
+                                                        </select>
+                                                    </div>
+                                                    <label className="flex items-center gap-2 text-[9px] text-gray-400 font-mono cursor-pointer bg-gray-950 p-2 rounded-lg border border-gray-850 hover:border-blue-500/50 mt-4 h-9">
+                                                        <input type="checkbox" checked={isHandcuff} onChange={e => setIsHandcuff(e.target.checked)} className="rounded" />
+                                                        <span>Backup Cuff</span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {(metrics?.nflPropType === 'receiving_yards' || metrics?.nflPropType === 'receptions') && (
+                                            <div className="space-y-3 animate-fadeIn">
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">Target Share %</label>
+                                                        <input type="number" step="0.01" value={targetSharePct} onChange={e => setTargetSharePct(parseFloat(e.target.value) || 0)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">Team Pass Att</label>
+                                                        <input type="number" value={teamProjPassAttempts} onChange={e => setTeamProjPassAttempts(parseInt(e.target.value) || 0)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">Catch Rate %</label>
+                                                        <input type="number" step="0.01" value={catchRatePct} onChange={e => setCatchRatePct(parseFloat(e.target.value) || 0.65)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg" />
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">Avg YPT</label>
+                                                        <input type="number" step="0.1" value={avgYpt} onChange={e => setAvgYpt(parseFloat(e.target.value) || 8.0)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">Opp Coverage</label>
+                                                        <input type="number" step="0.05" value={oppCoverageGrade} onChange={e => setOppCoverageGrade(parseFloat(e.target.value) || 1.0)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">Separation</label>
+                                                        <input type="number" step="0.05" value={separationRate} onChange={e => setSeparationRate(parseFloat(e.target.value) || 1.0)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg" />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">Route Depth Concept</label>
+                                                    <select value={routeConcept} onChange={e => setRouteConcept(e.target.value as any)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg">
+                                                        <option value="deep">Deep (15+ yards)</option>
+                                                        <option value="intermediate">Intermediate (8-14 yards)</option>
+                                                        <option value="short">Short/Screen (0-7 yards)</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {metrics?.nflPropType === 'anytime_td' && (
+                                            <div className="space-y-3 animate-fadeIn bg-gray-950 p-3 rounded-2xl border border-gray-900">
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">RZ Target Share %</label>
+                                                        <input type="number" step="0.01" value={rzTargetSharePct} onChange={e => setRzTargetSharePct(parseFloat(e.target.value) || 0)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-md" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">Team RZ Trips</label>
+                                                        <input type="number" step="0.1" value={teamRzTrips} onChange={e => setTeamRzTrips(parseFloat(e.target.value) || 0)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-md" />
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">Player RZ Conv Rate</label>
+                                                        <input type="number" step="0.01" value={playerRzTdRate} onChange={e => setPlayerRzTdRate(parseFloat(e.target.value) || 0)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-md" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">Opp RZ TD Allowed</label>
+                                                        <input type="number" step="0.01" value={oppRzTdAllowedRate} onChange={e => setOppRzTdAllowedRate(parseFloat(e.target.value) || 0)} className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-md" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="grid grid-cols-2 gap-2 p-1.5 bg-gray-950 rounded-xl border border-gray-900 mt-2">
+                                            <label className="flex items-center gap-1.5 text-[8.5px] text-gray-400 font-mono cursor-pointer hover:text-white transition-colors">
+                                                <input type="checkbox" checked={isDivisional} onChange={e => setIsDivisional(e.target.checked)} className="rounded border-gray-800 text-blue-500 bg-gray-950" />
+                                                <span>Divisional Familiarity</span>
+                                            </label>
+                                            <label className="flex items-center gap-1.5 text-[8.5px] text-gray-400 font-mono cursor-pointer hover:text-white transition-colors">
+                                                <input type="checkbox" checked={isPlayoffAtmosphere} onChange={e => setIsPlayoffAtmosphere(e.target.checked)} className="rounded border-gray-800 text-blue-500 bg-gray-950" />
+                                                <span>Playoff Intensity</span>
+                                            </label>
+                                        </div>
                                     </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[8px] text-gray-600 uppercase font-mono font-bold tracking-widest">Pace</label>
-                                        <input 
-                                            type="number" 
-                                            value={customPace} 
-                                            onChange={(e) => setCustomPace(parseFloat(e.target.value) || 0)} 
-                                            className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-2 rounded-lg focus:border-emerald-500 outline-none transition-all" 
-                                        />
+                                ) : (
+                                    <div className="grid grid-cols-3 gap-3 animate-fadeIn">
+                                        <div className="space-y-2">
+                                            <label className="text-[8px] text-gray-600 uppercase font-mono font-bold tracking-widest">Mins</label>
+                                            <input 
+                                                type="number" 
+                                                value={customMins} 
+                                                onChange={(e) => setCustomMins(parseFloat(e.target.value) || 0)} 
+                                                className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-2 rounded-lg focus:border-emerald-500 outline-none transition-all" 
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[8px] text-gray-600 uppercase font-mono font-bold tracking-widest">Pace</label>
+                                            <input 
+                                                type="number" 
+                                                value={customPace} 
+                                                onChange={(e) => setCustomPace(parseFloat(e.target.value) || 0)} 
+                                                className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-2 rounded-lg focus:border-emerald-500 outline-none transition-all" 
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[8px] text-gray-600 uppercase font-mono font-bold tracking-widest">Def</label>
+                                            <input 
+                                                type="number" 
+                                                value={customOppFactor} 
+                                                onChange={(e) => setCustomOppFactor(parseFloat(e.target.value) || 0)} 
+                                                className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-2 rounded-lg focus:border-emerald-500 outline-none transition-all" 
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[8px] text-gray-600 uppercase font-mono font-bold tracking-widest">Def</label>
-                                        <input 
-                                            type="number" 
-                                            value={customOppFactor} 
-                                            onChange={(e) => setCustomOppFactor(parseFloat(e.target.value) || 0)} 
-                                            className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-2 rounded-lg focus:border-emerald-500 outline-none transition-all" 
-                                        />
-                                    </div>
-                                </div>
+                                )}
 
                                 <button 
                                     onClick={handleRecalculate}
@@ -522,6 +866,20 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data, bank
                                             <p className="font-mono text-[10px]">
                                                 Signal Resolution: <span className="text-emerald-400 font-bold">{metrics.mlbEdgeSignal || "No bet"}</span>
                                             </p>
+                                        </div>
+                                    ) : leg.league === League.NFL || leg.league === 'NFL' ? (
+                                        <div className="text-[11px] text-gray-400 leading-relaxed space-y-1.5 w-full">
+                                            <p>
+                                                <span className="text-emerald-400 font-bold uppercase tracking-widest mr-2">NFL Prop Science:</span> 
+                                                Utilizing the <span className="text-white font-bold">{metrics.modelUsed}</span> distribution, we modeled the <span className="text-white font-bold">{leg.statType}</span> market under strict situational game scripts.
+                                            </p>
+                                            <div className="p-2.5 bg-gray-950/90 rounded border border-gray-800 font-mono text-[9.5px] text-emerald-300">
+                                                {metrics.nflFormulaSummary}
+                                            </div>
+                                            <div className="font-mono text-[10px] flex flex-wrap items-center gap-4">
+                                                <span>Signal Resolution: <span className="text-emerald-400 font-bold">{metrics.nflEdgeSignal || "No bet"}</span></span>
+                                                <span>Confidence Level: <span className="text-blue-400 font-bold">{metrics.nflConfidenceText || "None"}</span></span>
+                                            </div>
                                         </div>
                                     ) : (
                                         <p className="text-[11px] text-gray-400 leading-relaxed">

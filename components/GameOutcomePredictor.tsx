@@ -6,6 +6,7 @@ import {
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
+import { League } from '../types';
 
 interface PlayerStat {
   playerName: string;
@@ -26,15 +27,24 @@ interface PlayerProp {
 interface GamePredictionData {
   homeTeam: string;
   awayTeam: string;
-  homeNetRtg: number;
-  awayNetRtg: number;
-  homePace: number;
-  awayPace: number;
-  homeTS: number;
-  awayTS: number;
+  sport?: string;
+  homeNetRtg?: number;
+  awayNetRtg?: number;
+  homePace?: number;
+  awayPace?: number;
+  homeTS?: number;
+  awayTS?: number;
+  homeWrc?: number;
+  awayWrc?: number;
+  homeSpxFip?: number;
+  awaySpxFip?: number;
+  parkFactor?: number;
+  homeDVOA?: number;
+  awayDVOA?: number;
   injuryReport: string[];
   projectedMargin: number;
   bookSpread: number;
+  projectedTotal?: number;
   edgePoints: number;
   edgeCategory: string;
   recommendedPick: string;
@@ -53,6 +63,8 @@ interface GamePredictionData {
   mlEdgeTeam: string;
   mlEdgePct: number;
   mlEdgeCategory: string;
+  mlbFormulaSummary?: string;
+  nflFormulaSummary?: string;
 }
 
 interface MatchupItem {
@@ -79,6 +91,8 @@ interface TrackedPick {
 
 export const GameOutcomePredictor: React.FC = () => {
   // UI states
+  const [selectedLeague, setSelectedLeague] = useState<League>(League.NBA);
+  const [showFormulaParams, setShowFormulaParams] = useState<boolean>(true);
   const [matchups, setMatchups] = useState<MatchupItem[]>([]);
   const [selectedMatchupId, setSelectedMatchupId] = useState<string>('');
   const [isCustom, setIsCustom] = useState<boolean>(false);
@@ -91,6 +105,50 @@ export const GameOutcomePredictor: React.FC = () => {
   const [bookHomeML, setBookHomeML] = useState<number>(-190);
   const [bookAwayML, setBookAwayML] = useState<number>(160);
 
+  // NBA Engine States
+  const [homeNetRtg, setHomeNetRtg] = useState<number>(4.2);
+  const [awayNetRtg, setAwayNetRtg] = useState<number>(1.1);
+  const [homeORtg, setHomeORtg] = useState<number>(116.5);
+  const [awayDRtg, setAwayDRtg] = useState<number>(114.2);
+  const [awayORtg, setAwayORtg] = useState<number>(115.0);
+  const [homeDRtg, setHomeDRtg] = useState<number>(113.8);
+  const [pace, setPace] = useState<number>(98.5);
+  
+  // NBA Situationals
+  const [isB2B, setIsB2B] = useState<boolean>(false);
+  const [restDifference, setRestDifference] = useState<number>(0);
+  const [missingStarHome, setMissingStarHome] = useState<boolean>(false);
+  const [missingStarAway, setMissingStarAway] = useState<boolean>(false);
+  const [isPlayoff, setIsPlayoff] = useState<boolean>(false);
+
+  // MLB Engine States
+  const [homeWrc, setHomeWrc] = useState<number>(105);
+  const [awayWrc, setAwayWrc] = useState<number>(98);
+  const [homeSpxFip, setHomeSpxFip] = useState<number>(3.90);
+  const [awaySpxFip, setAwaySpxFip] = useState<number>(4.20);
+  const [ballparkRunFactor, setBallparkRunFactor] = useState<number>(1.00);
+  const [handednessAdjustment, setHandednessAdjustment] = useState<number>(0.00);
+  const [homeSPprojectedEr, setHomeSPprojectedEr] = useState<number>(2.40);
+  const [awaySPprojectedEr, setAwaySPprojectedEr] = useState<number>(2.80);
+  const [bullpenEraContrib, setBullpenEraContrib] = useState<number>(1.80);
+  const [windSpeed, setWindSpeed] = useState<number>(5);
+
+  // NFL Engine States
+  const [homeDVOA, setHomeDVOA] = useState<number>(12.5);
+  const [awayDVOA, setAwayDVOA] = useState<number>(5.0);
+  const [homeOffenseDVOA, setHomeOffenseDVOA] = useState<number>(10.2);
+  const [awayDefenseDVOA, setAwayDefenseDVOA] = useState<number>(-3.5);
+  const [awayOffenseDVOA, setAwayOffenseDVOA] = useState<number>(6.1);
+  const [homeDefenseDVOA, setHomeDefenseDVOA] = useState<number>(1.2);
+  const [paceFactor, setPaceFactor] = useState<number>(1.00);
+  const [isBackupQBHome, setIsBackupQBHome] = useState<boolean>(false);
+  const [isBackupQBAway, setIsBackupQBAway] = useState<boolean>(false);
+  const [isOffByeHome, setIsOffByeHome] = useState<boolean>(false);
+  const [isOffByeAway, setIsOffByeAway] = useState<boolean>(false);
+  const [isShortWeekHome, setIsShortWeekHome] = useState<boolean>(false);
+  const [isShortWeekAway, setIsShortWeekAway] = useState<boolean>(false);
+  const [weatherWindNFL, setWeatherWindNFL] = useState<number>(8);
+
   // Loaders
   const [isPredicting, setIsPredicting] = useState<boolean>(false);
   
@@ -102,24 +160,130 @@ export const GameOutcomePredictor: React.FC = () => {
   const [sortBy, setSortBy] = useState<'highest' | 'recent'>('highest');
 
   // Helper client-side formula to convert standard point spread to estimated american money line
-  const estimateML = (spread: number) => {
+  const estimateML = (spread: number, currentSport: League = selectedLeague) => {
     const margin = -spread;
-    const prob = 1 / (1 + Math.exp(-0.1554 * margin));
+    let prob = 1 / (1 + Math.exp(-0.1554 * margin));
+    if (currentSport === League.MLB) {
+      prob = 1 / (1 + Math.exp(-0.6 * margin));
+    }
     let hML = -110;
     let aML = -110;
     if (prob >= 0.5) {
       hML = Math.round(-(prob / (1 - prob)) * 100);
-      aML = Math.round(((1 - prob) / prob) * 100);
+      aML = Math.round(((1 - prob) / prob) * 105);
     } else {
-      hML = Math.round((prob / (1 - prob)) * 100);
+      hML = Math.round((prob / (1 - prob)) * 105);
       aML = Math.round(-((1 - prob) / prob) * 100);
     }
     return { homeML: hML, awayML: aML };
   };
 
-  // Fetch matchups on mount
+  // Real-time calculation engine outputs
+  const calculated = React.useMemo(() => {
+    if (selectedLeague === League.NBA) {
+      let margin = (homeNetRtg - awayNetRtg) / 2 + 2.75;
+      if (isB2B) {
+        margin = margin * 0.85 - 2.2;
+      }
+      if (restDifference >= 3) {
+        margin += 2.5;
+      }
+      if (missingStarHome) {
+        margin -= 3.5;
+      }
+      if (missingStarAway) {
+        margin += 3.5;
+      }
+      if (isPlayoff) {
+        margin += margin >= 0 ? 1.0 : -1.0;
+      }
+
+      const total = ((homeORtg + awayDRtg) / 2 + (awayORtg + homeDRtg) / 2) * (pace / 100);
+      const ourSpread = -margin;
+      const spreadDiff = ourSpread - bookSpread;
+      const totalDiff = total - bookTotal;
+
+      return {
+        margin: Number(margin.toFixed(1)),
+        spread: Number(ourSpread.toFixed(1)),
+        total: Number(total.toFixed(1)),
+        spreadEdge: Number(Math.abs(spreadDiff).toFixed(1)),
+        totalEdge: Number(Math.abs(totalDiff).toFixed(1)),
+        spreadRecommend: spreadDiff > 0 ? `LEAN AWAY +${Math.abs(bookSpread)}` : `LEAN HOME ${bookSpread}`,
+        totalRecommend: totalDiff > 0 ? 'OVER' : 'UNDER'
+      };
+
+    } else if (selectedLeague === League.MLB) {
+      const scaleNode = 0.05; 
+      const rawHomePart = (homeWrc - awaySpxFip * 20); 
+      const rawAwayPart = (awayWrc - homeSpxFip * 20); 
+      const margin = (rawHomePart - rawAwayPart) * scaleNode + (ballparkRunFactor - 1.0) * 2 + handednessAdjustment;
+
+      let total = homeSPprojectedEr + awaySPprojectedEr + bullpenEraContrib + (ballparkRunFactor - 1.0) * 1.5;
+      if (windSpeed >= 15) {
+        total += 0.8;
+      }
+
+      const ourSpread = -margin;
+      const spreadDiff = ourSpread - bookSpread;
+      const totalDiff = total - bookTotal;
+
+      return {
+        margin: Number(margin.toFixed(2)),
+        spread: Number(ourSpread.toFixed(2)),
+        total: Number(total.toFixed(1)),
+        spreadEdge: Number(Math.abs(spreadDiff).toFixed(2)),
+        totalEdge: Number(Math.abs(totalDiff).toFixed(1)),
+        spreadRecommend: spreadDiff > 0 ? `LEAN AWAY +${Math.abs(bookSpread)}` : `LEAN HOME ${bookSpread}`,
+        totalRecommend: totalDiff > 0 ? 'OVER' : 'UNDER'
+      };
+
+    } else {
+      const hfa = 2.75;
+      const qbAdjHome = isBackupQBHome ? -8.5 : 0;
+      const qbAdjAway = isBackupQBAway ? -8.5 : 0;
+      const byeHome = isOffByeHome ? 2.5 : 0;
+      const byeAway = isOffByeAway ? 2.5 : 0;
+      const shortHome = isShortWeekHome ? -1.5 : 0;
+      const shortAway = isShortWeekAway ? -1.5 : 0;
+
+      let margin = (homeDVOA - awayDVOA) * 0.15 + hfa + qbAdjHome - qbAdjAway + (byeHome - byeAway) + (shortHome - shortAway);
+      
+      const offDefDiffHome = homeOffenseDVOA - awayDefenseDVOA; 
+      const offDefDiffAway = awayOffenseDVOA - homeDefenseDVOA;
+      let total = 44.5 + (offDefDiffHome + offDefDiffAway) * 0.15 * paceFactor;
+      if (weatherWindNFL > 15) {
+        total -= 3.0;
+      }
+
+      const ourSpread = -margin;
+      const spreadDiff = ourSpread - bookSpread;
+      const totalDiff = total - bookTotal;
+
+      return {
+        margin: Number(margin.toFixed(1)),
+        spread: Number(ourSpread.toFixed(1)),
+        total: Number(total.toFixed(1)),
+        spreadEdge: Number(Math.abs(spreadDiff).toFixed(1)),
+        totalEdge: Number(Math.abs(totalDiff).toFixed(1)),
+        spreadRecommend: spreadDiff > 0 ? `LEAN AWAY +${Math.abs(bookSpread)}` : `LEAN HOME ${bookSpread}`,
+        totalRecommend: totalDiff > 0 ? 'OVER' : 'UNDER'
+      };
+    }
+  }, [
+    selectedLeague, bookSpread, bookTotal,
+    homeNetRtg, awayNetRtg, homeORtg, awayDRtg, awayORtg, homeDRtg, pace,
+    isB2B, restDifference, missingStarHome, missingStarAway, isPlayoff,
+    homeWrc, awayWrc, homeSpxFip, awaySpxFip, ballparkRunFactor, handednessAdjustment,
+    homeSPprojectedEr, awaySPprojectedEr, bullpenEraContrib, windSpeed,
+    homeDVOA, awayDVOA, homeOffenseDVOA, awayDefenseDVOA, awayOffenseDVOA, homeDefenseDVOA,
+    paceFactor, isBackupQBHome, isBackupQBAway, isOffByeHome, isOffByeAway, isShortWeekHome, isShortWeekAway,
+    weatherWindNFL
+  ]);
+
+  // Fetch matchups on mount and when league selection changes
   useEffect(() => {
-    fetchMatchups();
+    fetchMatchups(selectedLeague);
     // Load saved tracked picks
     const saved = localStorage.getItem('tracked_nba_predictions');
     if (saved) {
@@ -129,11 +293,11 @@ export const GameOutcomePredictor: React.FC = () => {
         console.error(e);
       }
     }
-  }, []);
+  }, [selectedLeague]);
 
-  const fetchMatchups = async () => {
+  const fetchMatchups = async (sport: League = selectedLeague) => {
     try {
-      const res = await fetch('/api/nba/games/today');
+      const res = await fetch(`/api/games/${sport}`);
       if (res.ok) {
         const data: MatchupItem[] = await res.json();
         setMatchups(data);
@@ -141,9 +305,16 @@ export const GameOutcomePredictor: React.FC = () => {
           setSelectedMatchupId(data[0].id);
           setBookSpread(data[0].bookSpread);
           setBookTotal(data[0].bookTotal);
-          const est = estimateML(data[0].bookSpread);
+          const est = estimateML(data[0].bookSpread, sport);
           setBookHomeML(data[0].bookHomeML || est.homeML);
           setBookAwayML(data[0].bookAwayML || est.awayML);
+        } else {
+          setSelectedMatchupId('');
+          setBookSpread(sport === League.MLB ? -1.5 : -4.5);
+          setBookTotal(sport === League.MLB ? 8.5 : (sport === League.NFL ? 45.5 : 222.0));
+          const est = estimateML(sport === League.MLB ? -1.5 : -4.5, sport);
+          setBookHomeML(est.homeML);
+          setBookAwayML(est.awayML);
         }
       }
     } catch (e) {
@@ -158,7 +329,7 @@ export const GameOutcomePredictor: React.FC = () => {
     if (matched) {
       setBookSpread(matched.bookSpread);
       setBookTotal(matched.bookTotal);
-      const est = estimateML(matched.bookSpread);
+      const est = estimateML(matched.bookSpread, selectedLeague);
       setBookHomeML(matched.bookHomeML || est.homeML);
       setBookAwayML(matched.bookAwayML || est.awayML);
       setIsCustom(false);
@@ -183,16 +354,26 @@ export const GameOutcomePredictor: React.FC = () => {
     }
 
     try {
-      const res = await fetch('/api/nba/predict', {
+      const res = await fetch('/api/predict', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          sport: selectedLeague,
           homeTeam: home,
           awayTeam: away,
           bookSpread,
           bookTotal,
           bookHomeML,
-          bookAwayML
+          bookAwayML,
+          customParams: {
+            homeNetRtg, awayNetRtg, homeORtg, awayDRtg, awayORtg, homeDRtg, pace,
+            isB2B, restDifference, missingStarHome, missingStarAway, isPlayoff,
+            homeWrc, awayWrc, homeSpxFip, awaySpxFip, ballparkRunFactor, handednessAdjustment,
+            homeSPprojectedEr, awaySPprojectedEr, bullpenEraContrib, windSpeed,
+            homeDVOA, awayDVOA, homeOffenseDVOA, awayDefenseDVOA, awayOffenseDVOA, homeDefenseDVOA,
+            paceFactor, isBackupQBHome, isBackupQBAway, isOffByeHome, isOffByeAway, isShortWeekHome, isShortWeekAway,
+            weatherWindNFL
+          }
         })
       });
 
@@ -295,18 +476,51 @@ export const GameOutcomePredictor: React.FC = () => {
             GROUNDED WEB PIPELINE ACTIVE
           </span>
         </div>
-      </div>
-
-      {/* Control Console Grid */}
+      </div>      {/* Control Console Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
         {/* Left Input form Controls (5 cols) */}
         <div className="lg:col-span-5 space-y-6">
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl flex flex-col justify-between h-auto">
             <div className="space-y-5">
+              
+              {/* Sport Selector Tabs */}
+              <div className="grid grid-cols-3 gap-2 p-1 bg-gray-950 border border-gray-800 rounded-xl">
+                <button
+                  onClick={() => setSelectedLeague(League.NBA)}
+                  className={`py-2 text-[10px] font-bold tracking-widest uppercase rounded-lg transition-all ${
+                    selectedLeague === League.NBA 
+                      ? 'bg-blue-500 text-gray-950 font-extrabold shadow-md shadow-blue-500/10' 
+                      : 'text-gray-400 hover:text-white hover:bg-gray-900/50'
+                  }`}
+                >
+                  NBA
+                </button>
+                <button
+                  onClick={() => setSelectedLeague(League.MLB)}
+                  className={`py-2 text-[10px] font-bold tracking-widest uppercase rounded-lg transition-all ${
+                    selectedLeague === League.MLB 
+                      ? 'bg-blue-500 text-gray-950 font-extrabold shadow-md shadow-blue-500/10' 
+                      : 'text-gray-400 hover:text-white hover:bg-gray-900/50'
+                  }`}
+                >
+                  MLB
+                </button>
+                <button
+                  onClick={() => setSelectedLeague(League.NFL)}
+                  className={`py-2 text-[10px] font-bold tracking-widest uppercase rounded-lg transition-all ${
+                    selectedLeague === League.NFL 
+                      ? 'bg-blue-500 text-gray-950 font-extrabold shadow-md shadow-blue-500/10' 
+                      : 'text-gray-400 hover:text-white hover:bg-gray-900/50'
+                  }`}
+                >
+                  NFL
+                </button>
+              </div>
+
               <div className="flex items-center justify-between border-b border-gray-800 pb-4 mb-2">
                 <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider font-mono flex items-center gap-1.5">
-                  <Sliders size={14} className="text-blue-500" /> Matchup Configuration
+                  <Sliders size={14} className="text-blue-500" /> Matchup Setup ({selectedLeague})
                 </span>
                 
                 {/* Custom Toggle Switch */}
@@ -343,7 +557,9 @@ export const GameOutcomePredictor: React.FC = () => {
                 </div>
               ) : (
                 <div className="p-3 bg-gray-950 border border-gray-800 rounded-xl relative select-none animate-fadeIn">
-                  <label className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-2.5 block">Select Live NBA Matchup</label>
+                  <label className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-2.5 block">
+                    Select Live {selectedLeague} Matchup
+                  </label>
                   <div className="relative">
                     <select 
                       value={selectedMatchupId}
@@ -371,7 +587,7 @@ export const GameOutcomePredictor: React.FC = () => {
                 <div className="p-3.5 bg-gray-950 border border-gray-800 rounded-xl">
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">Book Spread</label>
-                    <span className="text-[8px] font-mono text-gray-600 block leading-none">Home Fav (-) / Und (+)</span>
+                    <span className="text-[8px] font-mono text-gray-650 block leading-none">Home Fav (-)</span>
                   </div>
                   <input 
                     type="number" 
@@ -380,7 +596,7 @@ export const GameOutcomePredictor: React.FC = () => {
                     onChange={(e) => {
                       const spreadVal = Number(e.target.value);
                       setBookSpread(spreadVal);
-                      const est = estimateML(spreadVal);
+                      const est = estimateML(spreadVal, selectedLeague);
                       setBookHomeML(est.homeML);
                       setBookAwayML(est.awayML);
                     }}
@@ -419,6 +635,389 @@ export const GameOutcomePredictor: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {/* Dynamic Formula Fine-Tuning Workspace */}
+              <div className="border border-gray-800 rounded-xl overflow-hidden bg-gray-950">
+                <button 
+                  type="button"
+                  onClick={() => setShowFormulaParams(!showFormulaParams)}
+                  className="w-full p-3.5 bg-gray-900 hover:bg-gray-850 transition-colors flex items-center justify-between text-left border-b border-gray-800"
+                >
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-400 font-mono flex items-center gap-2">
+                    <Sliders size={12} /> Model Tuning Parameters
+                  </span>
+                  <ChevronDown size={14} className={`text-gray-400 transition-transform ${showFormulaParams ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showFormulaParams && (
+                  <div className="p-4 space-y-4 max-h-[320px] overflow-y-auto custom-scrollbar text-xs">
+                    {selectedLeague === League.NBA && (
+                      <div className="space-y-4 animate-fadeIn">
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-[10px] uppercase font-mono font-bold">
+                            <span className="text-gray-400">Home Net Rating</span>
+                            <span className="text-blue-400">{homeNetRtg > 0 ? `+${homeNetRtg}` : homeNetRtg}</span>
+                          </div>
+                          <input 
+                            type="range" min="-15" max="15" step="0.1" value={homeNetRtg} 
+                            onChange={(e) => setHomeNetRtg(Number(e.target.value))}
+                            className="w-full accent-blue-500"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-[10px] uppercase font-mono font-bold">
+                            <span className="text-gray-400">Away Net Rating</span>
+                            <span className="text-blue-400">{awayNetRtg > 0 ? `+${awayNetRtg}` : awayNetRtg}</span>
+                          </div>
+                          <input 
+                            type="range" min="-15" max="15" step="0.1" value={awayNetRtg} 
+                            onChange={(e) => setAwayNetRtg(Number(e.target.value))}
+                            className="w-full accent-blue-500"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 pt-2">
+                          <div className="space-y-1.5 p-2 bg-gray-900 border border-gray-850 rounded-lg">
+                            <label className="text-[9px] text-gray-500 font-bold uppercase block tracking-wider">Home ORtg</label>
+                            <input 
+                              type="number" step="0.5" value={homeORtg} 
+                              onChange={(e) => setHomeORtg(Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-white font-mono font-bold outline-none p-0 text-xs focus:ring-0"
+                            />
+                          </div>
+                          <div className="space-y-1.5 p-2 bg-gray-900 border border-gray-850 rounded-lg">
+                            <label className="text-[9px] text-gray-500 font-bold uppercase block tracking-wider">Away DRtg</label>
+                            <input 
+                              type="number" step="0.5" value={awayDRtg} 
+                              onChange={(e) => setAwayDRtg(Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-white font-mono font-bold outline-none p-0 text-xs focus:ring-0"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1.5 p-2 bg-gray-900 border border-gray-850 rounded-lg">
+                            <label className="text-[9px] text-gray-500 font-bold uppercase block tracking-wider">Away ORtg</label>
+                            <input 
+                              type="number" step="0.5" value={awayORtg} 
+                              onChange={(e) => setAwayORtg(Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-white font-mono font-bold outline-none p-0 text-xs focus:ring-0"
+                            />
+                          </div>
+                          <div className="space-y-1.5 p-2 bg-gray-900 border border-gray-850 rounded-lg">
+                            <label className="text-[9px] text-gray-500 font-bold uppercase block tracking-wider">Home DRtg</label>
+                            <input 
+                              type="number" step="0.5" value={homeDRtg} 
+                              onChange={(e) => setHomeDRtg(Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-white font-mono font-bold outline-none p-0 text-xs focus:ring-0"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-[10px] uppercase font-mono font-bold">
+                            <span className="text-gray-400">Game Pace</span>
+                            <span className="text-blue-400">{pace} pos</span>
+                          </div>
+                          <input 
+                            type="range" min="85" max="115" step="0.5" value={pace} 
+                            onChange={(e) => setPace(Number(e.target.value))}
+                            className="w-full accent-blue-500"
+                          />
+                        </div>
+
+                        {/* NBA Toggles */}
+                        <div className="pt-2 border-t border-gray-900 space-y-2">
+                          <label className="flex items-center justify-between p-1 cursor-pointer">
+                            <span className="text-[9.5px] text-gray-400 font-bold uppercase">Away Back-to-Back Road?</span>
+                            <input 
+                              type="checkbox" checked={isB2B} onChange={(e) => setIsB2B(e.target.checked)}
+                              className="rounded border-gray-800 bg-gray-900 text-blue-500 focus:ring-opacity-0"
+                            />
+                          </label>
+                          <label className="flex items-center justify-between p-1 cursor-pointer">
+                            <span className="text-[9.5px] text-gray-400 font-bold uppercase">Home 3+ Days Rest vs B2B?</span>
+                            <input 
+                              type="checkbox" checked={restDifference >= 3} 
+                              onChange={(e) => setRestDifference(e.target.checked ? 3 : 0)}
+                              className="rounded border-gray-800 bg-gray-900 text-blue-500 focus:ring-opacity-0"
+                            />
+                          </label>
+                          <label className="flex items-center justify-between p-1 cursor-pointer">
+                            <span className="text-[9.5px] text-gray-400 font-bold uppercase">Missing Home Star (-3.5)?</span>
+                            <input 
+                              type="checkbox" checked={missingStarHome} onChange={(e) => setMissingStarHome(e.target.checked)}
+                              className="rounded border-gray-800 bg-gray-900 text-blue-500 focus:ring-opacity-0"
+                            />
+                          </label>
+                          <label className="flex items-center justify-between p-1 cursor-pointer">
+                            <span className="text-[9.5px] text-gray-400 font-bold uppercase">Missing Away Star (-3.5)?</span>
+                            <input 
+                              type="checkbox" checked={missingStarAway} onChange={(e) => setIsB2B(e.target.checked ? false : missingStarAway)} // just toggles
+                              className="hidden" // hide simple raw inputs, render neat toggle wrapper
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setMissingStarAway(!missingStarAway)}
+                              className={`px-2 py-0.5 text-[8px] font-black uppercase rounded ${missingStarAway ? 'bg-red-500/20 text-red-300 border border-red-500/35' : 'bg-gray-900 text-gray-500 border border-gray-800'}`}
+                            >
+                              {missingStarAway ? 'ACTIVE' : 'INACTIVE'}
+                            </button>
+                          </label>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedLeague === League.MLB && (
+                      <div className="space-y-4 animate-fadeIn">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1 p-2 bg-gray-900 border border-gray-850 rounded-lg">
+                            <label className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Home Team wRC+</label>
+                            <input 
+                              type="number" value={homeWrc} 
+                              onChange={(e) => setHomeWrc(Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-white font-mono font-bold outline-none p-0 text-xs focus:ring-0"
+                            />
+                          </div>
+                          <div className="space-y-1 p-2 bg-gray-900 border border-gray-850 rounded-lg">
+                            <label className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Away Team wRC+</label>
+                            <input 
+                              type="number" value={awayWrc} 
+                              onChange={(e) => setAwayWrc(Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-white font-mono font-bold outline-none p-0 text-xs focus:ring-0"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1 p-2 bg-gray-900 border border-gray-850 rounded-lg">
+                            <label className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Home SP xFIP ERA</label>
+                            <input 
+                              type="number" step="0.05" value={homeSpxFip} 
+                              onChange={(e) => setHomeSpxFip(Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-white font-mono font-bold outline-none p-0 text-xs focus:ring-0"
+                            />
+                          </div>
+                          <div className="space-y-1 p-2 bg-gray-900 border border-gray-850 rounded-lg">
+                            <label className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Away SP xFIP ERA</label>
+                            <input 
+                              type="number" step="0.05" value={awaySpxFip} 
+                              onChange={(e) => setAwaySpxFip(Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-white font-mono font-bold outline-none p-0 text-xs focus:ring-0"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-[10px] uppercase font-mono font-bold">
+                            <span className="text-gray-400">Ballpark Run Factor</span>
+                            <span className="text-blue-400">x{ballparkRunFactor.toFixed(2)}</span>
+                          </div>
+                          <input 
+                            type="range" min="0.80" max="1.30" step="0.01" value={ballparkRunFactor} 
+                            onChange={(e) => setBallparkRunFactor(Number(e.target.value))}
+                            className="w-full accent-blue-500"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-[10px] uppercase font-mono font-bold">
+                            <span className="text-gray-400">Handedness Adjustment</span>
+                            <span className="text-blue-400">{handednessAdjustment >= 0 ? `+${handednessAdjustment}` : handednessAdjustment} runs</span>
+                          </div>
+                          <input 
+                            type="range" min="-1" max="1" step="0.05" value={handednessAdjustment} 
+                            onChange={(e) => setHandednessAdjustment(Number(e.target.value))}
+                            className="w-full accent-blue-500"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 border-t border-gray-900 pt-3">
+                          <div className="space-y-1 p-2 bg-gray-900 border border-gray-850 rounded-lg">
+                            <label className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Home SP Proj ER</label>
+                            <input 
+                              type="number" step="0.1" value={homeSPprojectedEr} 
+                              onChange={(e) => setHomeSPprojectedEr(Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-white font-mono font-bold outline-none p-0 text-xs focus:ring-0"
+                            />
+                          </div>
+                          <div className="space-y-1 p-2 bg-gray-900 border border-gray-850 rounded-lg">
+                            <label className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Away SP Proj ER</label>
+                            <input 
+                              type="number" step="0.1" value={awaySPprojectedEr} 
+                              onChange={(e) => setAwaySPprojectedEr(Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-white font-mono font-bold outline-none p-0 text-xs focus:ring-0"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1 p-2 bg-gray-900 border border-gray-850 rounded-lg font-mono">
+                            <label className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Bullpen ER Added</label>
+                            <input 
+                              type="number" step="0.1" value={bullpenEraContrib} 
+                              onChange={(e) => setBullpenEraContrib(Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-white font-bold outline-none p-0 text-xs focus:ring-0"
+                            />
+                          </div>
+                          <div className="space-y-1 p-2 bg-gray-900 border border-gray-850 rounded-lg font-mono">
+                            <label className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Wind Speed (mph)</label>
+                            <input 
+                              type="number" value={windSpeed} 
+                              onChange={(e) => setWindSpeed(Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-white font-bold outline-none p-0 text-xs focus:ring-0"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedLeague === League.NFL && (
+                      <div className="space-y-4 animate-fadeIn font-mono">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1 p-2 bg-gray-900 border border-gray-850 rounded-lg">
+                            <label className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Home Team Net DVOA%</label>
+                            <input 
+                              type="number" step="0.5" value={homeDVOA} 
+                              onChange={(e) => setHomeDVOA(Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-white font-bold outline-none p-0 text-xs focus:ring-0"
+                            />
+                          </div>
+                          <div className="space-y-1 p-2 bg-gray-900 border border-gray-850 rounded-lg">
+                            <label className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Away Team Net DVOA%</label>
+                            <input 
+                              type="number" step="0.5" value={awayDVOA} 
+                              onChange={(e) => setAwayDVOA(Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-white font-bold outline-none p-0 text-xs focus:ring-0"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1 p-2 bg-gray-900 border border-gray-850 rounded-lg">
+                            <label className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Home Offense DVOA%</label>
+                            <input 
+                              type="number" step="0.5" value={homeOffenseDVOA} 
+                              onChange={(e) => setHomeOffenseDVOA(Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-white font-bold outline-none p-0 text-xs focus:ring-0"
+                            />
+                          </div>
+                          <div className="space-y-1 p-2 bg-gray-900 border border-gray-850 rounded-lg">
+                            <label className="text-[8px] text-gray-500 font-bold uppercase tracking-wider block">Away Defense DVOA%</label>
+                            <input 
+                              type="number" step="0.5" value={awayDefenseDVOA} 
+                              onChange={(e) => setAwayDefenseDVOA(Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-white font-bold outline-none p-0 text-xs focus:ring-0"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 mb-2">
+                          <div className="space-y-1 p-2 bg-gray-900 border border-gray-850 rounded-lg font-mono">
+                            <label className="text-[8px] text-gray-500 font-bold uppercase block tracking-wider">Away Offense DVOA%</label>
+                            <input 
+                              type="number" step="0.5" value={awayOffenseDVOA} 
+                              onChange={(e) => setAwayOffenseDVOA(Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-white font-bold outline-none p-0 text-xs focus:ring-0"
+                            />
+                          </div>
+                          <div className="space-y-1 p-2 bg-gray-900 border border-gray-850 rounded-lg font-mono">
+                            <label className="text-[8px] text-gray-500 font-bold uppercase block tracking-wider">Home Defense DVOA%</label>
+                            <input 
+                              type="number" step="0.5" value={homeDefenseDVOA} 
+                              onChange={(e) => setHomeDefenseDVOA(Number(e.target.value))}
+                              className="w-full bg-transparent border-0 text-white font-bold outline-none p-0 text-xs focus:ring-0"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-[10px] uppercase font-bold">
+                            <span className="text-gray-400">Pace Factor</span>
+                            <span className="text-blue-400">x{paceFactor.toFixed(2)}</span>
+                          </div>
+                          <input 
+                            type="range" min="0.80" max="1.20" step="0.01" value={paceFactor} 
+                            onChange={(e) => setPaceFactor(Number(e.target.value))}
+                            className="w-full accent-blue-500"
+                          />
+                        </div>
+
+                        {/* NFL Situationals */}
+                        <div className="pt-2 border-t border-gray-900 space-y-2">
+                          <label className="flex items-center justify-between p-1 cursor-pointer">
+                            <span className="text-[9.5px] text-gray-400 font-bold uppercase">Home Team Backup QB?</span>
+                            <input 
+                              type="checkbox" checked={isBackupQBHome} onChange={(e) => setIsBackupQBHome(e.target.checked)}
+                              className="rounded border-gray-800 bg-gray-900 text-blue-500 focus:ring-opacity-0"
+                            />
+                          </label>
+                          <label className="flex items-center justify-between p-1 cursor-pointer">
+                            <span className="text-[9.5px] text-gray-400 font-bold uppercase">Away Team Backup QB?</span>
+                            <input 
+                              type="checkbox" checked={isBackupQBAway} onChange={(e) => setIsBackupQBAway(e.target.checked)}
+                              className="rounded border-gray-800 bg-gray-900 text-blue-500 focus:ring-opacity-0"
+                            />
+                          </label>
+                          <label className="flex items-center justify-between p-1 cursor-pointer">
+                            <span className="text-[9.5px] text-gray-400 font-bold uppercase">Home Team Off Bye?</span>
+                            <input 
+                              type="checkbox" checked={isOffByeHome} onChange={(e) => setIsOffByeHome(e.target.checked)}
+                              className="rounded border-gray-800 bg-gray-900 text-blue-500 focus:ring-opacity-0"
+                            />
+                          </label>
+                          <label className="flex items-center justify-between p-1 cursor-pointer">
+                            <span className="text-[9.5px] text-gray-400 font-bold uppercase">Away Team Off Bye?</span>
+                            <input 
+                              type="checkbox" checked={isOffByeAway} onChange={(e) => setIsOffByeAway(e.target.checked)}
+                              className="rounded border-gray-800 bg-gray-900 text-blue-500 focus:ring-opacity-0"
+                            />
+                          </label>
+                          <label className="flex items-center justify-between p-1 cursor-pointer">
+                            <span className="text-[9.5px] text-gray-400 font-bold uppercase">NFL Game Weather Wind (mph)</span>
+                            <input 
+                              type="number" value={weatherWindNFL} onChange={(e) => setWeatherWindNFL(Number(e.target.value))}
+                              className="w-12 text-center bg-gray-900 border border-gray-800 text-white rounded text-[10px] p-0.5 outline-none font-bold"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Computed Model Preview Drawer */}
+                    <div className="mt-3 p-3 bg-gradient-to-br from-blue-950/20 to-gray-900 border border-blue-500/10 rounded-lg space-y-2 font-mono">
+                      <div className="text-[10px] text-gray-400 font-black tracking-widest uppercase border-b border-gray-900 pb-1.5 flex items-center justify-between">
+                        <span>📊 Current Formula outputs</span>
+                        <span className="text-emerald-400 animate-pulse">● LIVE CONSOLE</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-[10px]">
+                        <div>
+                          <span className="text-gray-500">Proj. Spread:</span>{' '}
+                          <span className="font-bold text-white">{calculated.spread > 0 ? `+${calculated.spread}` : calculated.spread}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Spread Edge:</span>{' '}
+                          <span className="font-extrabold text-emerald-400">+{calculated.spreadEdge} pts</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Proj. Total:</span>{' '}
+                          <span className="font-bold text-white">{calculated.total} runs/pts</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Total Edge:</span>{' '}
+                          <span className="font-extrabold text-emerald-400">+{calculated.totalEdge} pts</span>
+                        </div>
+                      </div>
+                      <div className="text-[9px] uppercase font-bold text-blue-400 pt-1 text-center bg-gray-950/80 py-1 rounded border border-gray-900">
+                        {calculated.spreadRecommend} • {calculated.totalRecommend}
+                      </div>
+                    </div>
+
+                  </div>
+                )}
+              </div>
+
             </div>
 
             {/* CTA action */}
@@ -439,7 +1038,7 @@ export const GameOutcomePredictor: React.FC = () => {
             <AlertCircle size={18} className="text-blue-400 shrink-0 mt-0.5" />
             <p className="text-[10px] text-gray-400 font-sans leading-relaxed">
               <span className="font-bold text-blue-300 uppercase tracking-wider block mb-1">Prediction Guideline:</span>
-              This pipeline implements search grounding over live NBA roster sheets. Spreads are evaluated using actual team ratings factored with a <b>+2.75 HFA home boost factor</b>. Edges over 3.0 pts are flagged as <b>Strong Edge</b> signals.
+              This pipeline implements search grounding over live {selectedLeague} roster sheets. Spreads are evaluated using actual team ratings factored with high-precision statistical models. Edges over 3.0 pts are flagged as <b>Strong Edge</b> signals.
             </p>
           </div>
         </div>

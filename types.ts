@@ -104,6 +104,52 @@ export interface BetLeg {
   bbPct?: number;              // Batter walk rate (e.g. 0.085)
   projectedPA?: number;        // Projected plate appearances (e.g. 4.2)
   
+  // NFL-Specific Mathematical Model Fields
+  avgPassYardsL5?: number;
+  seasonAvgPassYards?: number;
+  oppPassYardsAllowed?: number;
+  paceBonusMultiplier?: number;
+  gameScriptMultiplier?: number;
+  weatherFactor?: number;
+  qbTdRate?: number;
+  qbIntRate?: number;
+  qbAttemptsAvg?: number;
+  rzOppRate?: number;
+  oppPosTdRate?: number;
+  oppPassFunnel?: number;
+  impliedGameTotal?: number;
+  spreadPoints?: number;
+  
+  missingWR?: boolean;
+  domeToColdOutdoor?: boolean;
+  windSpeedMph?: number;
+  offBye?: boolean;
+  shortWeek?: boolean;
+  facingManCoverage?: boolean;
+  
+  carriesProjection?: number;
+  avgYpc?: number;
+  olineRunBlockRank?: number; // 1-32
+  rbRole?: 'workhorse' | 'committee' | 'third_down';
+  isHandcuff?: boolean;
+  teamRushTendency?: number;
+  
+  targetSharePct?: number;
+  teamProjPassAttempts?: number;
+  avgYpt?: number;
+  oppCoverageGrade?: number;
+  separationRate?: number;
+  routeConcept?: 'deep' | 'intermediate' | 'short';
+  catchRatePct?: number;
+  
+  rzTargetSharePct?: number;
+  teamRzTrips?: number;
+  playerRzTdRate?: number;
+  oppRzTdAllowedRate?: number;
+  
+  isDivisional?: boolean;
+  isPlayoffAtmosphere?: boolean;
+  
   marketOdds?: {
     fanDuel?: number;
     draftKings?: number;

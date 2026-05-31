@@ -255,10 +255,338 @@ export const calculateMlbEngineMetrics = (leg: BetLeg) => {
   };
 };
 
+export const calculateNflEngineMetrics = (leg: BetLeg) => {
+  const {
+    line = 0, bookOdds = -110, statType = 'Prop', prediction = 'Over',
+    
+    // Core stats
+    avgPassYardsL5, seasonAvgPassYards, oppPassYardsAllowed,
+    qbTdRate, qbAttemptsAvg, rzOppRate, oppPosTdRate,
+    oppPassFunnel = 1.0, impliedGameTotal = 44.5, spreadPoints = 0,
+    
+    // Toggles
+    missingWR = false, domeToColdOutdoor = false, windSpeedMph = 0,
+    offBye = false, shortWeek = false, facingManCoverage = false,
+    
+    // Rushing
+    carriesProjection, avgYpc = 4.2, olineRunBlockRank = 16,
+    rbRole = 'committee', isHandcuff = false, teamRushTendency = 0,
+    
+    // Receiving
+    targetSharePct, teamProjPassAttempts, avgYpt,
+    oppCoverageGrade = 1.0, separationRate = 1.0, routeConcept = 'intermediate',
+    catchRatePct,
+    
+    // Anytime TD
+    rzTargetSharePct, teamRzTrips, playerRzTdRate, oppRzTdAllowedRate,
+    
+    isDivisional = false, isPlayoffAtmosphere = false
+  } = leg;
+
+  const type = statType.toLowerCase();
+  let propType = 'other';
+  if (type.includes('pass') && type.includes('yard')) propType = 'passing_yards';
+  else if (type.includes('pass') && type.includes('td')) propType = 'passing_tds';
+  else if (type.includes('pass') && type.includes('attempt')) propType = 'passing_attempts';
+  else if (type.includes('rush') && type.includes('yard')) propType = 'rushing_yards';
+  else if (type.includes('carry') || (type.includes('rush') && type.includes('attempt'))) propType = 'rushing_carries';
+  else if (type.includes('rec') && type.includes('yard')) propType = 'receiving_yards';
+  else if (type.includes('rec') || type.includes('catch') || type.includes('receptions')) propType = 'receptions';
+  else if (type.includes('td') || type.includes('touchdown')) propType = 'anytime_td';
+
+  let muFinal = 0;
+  let summary = "";
+  
+  // Weather wind adjustments
+  let windMul = 1.0;
+  if (windSpeedMph >= 25) windMul = 0.75;
+  else if (windSpeedMph >= 20) windMul = 0.83;
+  else if (windSpeedMph >= 15) windMul = 0.90;
+  else if (windSpeedMph >= 10) windMul = 0.96;
+  
+  // Game Script margins
+  const isFavorite10Plus = spreadPoints <= -10;
+  const isUnderdog10Plus = spreadPoints >= 10;
+  const isFavorite7Plus = spreadPoints <= -7;
+  const isUnderdog7Plus = spreadPoints >= 7;
+  const isCloseGame = Math.abs(spreadPoints) <= 3;
+
+  if (propType === 'passing_yards') {
+    const pL5 = avgPassYardsL5 || leg.x10 || 240;
+    const pSeason = seasonAvgPassYards || leg.xSeason || 235;
+    const pOpp = oppPassYardsAllowed || leg.oppAllowed || 220;
+    
+    const basePassYards = (pL5 * 0.40) + (pSeason * 0.30) + (pOpp * 0.30);
+    
+    let paceMul = leg.paceBonusMultiplier || (leg.expectedPace && leg.leaguePace ? leg.expectedPace / leg.leaguePace : 1.0);
+    let weatherMul = windMul;
+    if (domeToColdOutdoor) weatherMul *= 0.92;
+    if (windSpeedMph >= 15) weatherMul *= 0.85; 
+    
+    let gameScriptMul = 1.0;
+    if (isFavorite10Plus) gameScriptMul = 0.90;
+    else if (isUnderdog10Plus) gameScriptMul = 1.15;
+    
+    let qbAdj = 1.0;
+    if (missingWR) qbAdj *= 0.88;
+    if (offBye) qbAdj *= 1.05;
+    if (shortWeek) qbAdj *= 0.93;
+    if (facingManCoverage) qbAdj *= 1.02;
+    
+    muFinal = basePassYards * paceMul * gameScriptMul * weatherMul * qbAdj;
+    
+    summary = `Passing Yards = [L5 Avg (${pL5}) x 40% + Season Avg (${pSeason}) x 30% + Opp Allowed (${pOpp}) x 30%] = ${basePassYards.toFixed(1)} Base. Multipliers applied: Pace ${paceMul.toFixed(2)}x, Script ${gameScriptMul.toFixed(2)}x, Weather ${weatherMul.toFixed(2)}x, QB Adj ${qbAdj.toFixed(2)}x.`;
+  }
+  else if (propType === 'passing_attempts') {
+    const baseAttempts = qbAttemptsAvg || leg.xSeason || 34;
+    const funnel = oppPassFunnel;
+    const totalFactor = impliedGameTotal ? (impliedGameTotal / 44.5) : 1.0;
+    
+    let spreadAdj = 1.0;
+    if (isFavorite7Plus) spreadAdj = 0.88;
+    else if (isUnderdog7Plus) spreadAdj = 1.15;
+    
+    muFinal = baseAttempts * funnel * totalFactor * spreadAdj;
+    summary = `Attempts = [Season Avg (${baseAttempts})] x Funnel ${funnel.toFixed(2)}x x Total Factor ${totalFactor.toFixed(2)}x x Spread Adj ${spreadAdj.toFixed(2)}x.`;
+  }
+  else if (propType === 'passing_tds') {
+    const baseAttempts = qbAttemptsAvg || leg.xSeason || 34;
+    let spreadAdj = 1.0;
+    if (isFavorite7Plus) spreadAdj = 0.88;
+    else if (isUnderdog7Plus) spreadAdj = 1.15;
+    const projAttempts = baseAttempts * oppPassFunnel * (impliedGameTotal ? (impliedGameTotal / 44.5) : 1.0) * spreadAdj;
+
+    const tdRate = qbTdRate || 0.045; 
+    const rzOpp = rzOppRate || 1.0;
+    const oppTdRate = oppPosTdRate || 1.0;
+    const hfa = (spreadPoints < 0) ? 0.3 : 0.0; 
+    
+    let tdAdj = 1.0;
+    if (missingWR) tdAdj *= 0.85;
+    if (windSpeedMph >= 15) tdAdj *= 0.80;
+    
+    muFinal = ((tdRate * projAttempts) * rzOpp * oppTdRate + hfa) * tdAdj;
+    summary = `Pass TDs = [TD% (${(tdRate*100).toFixed(1)}%) x Proj Attempts (${projAttempts.toFixed(1)}) x RZ Opp (${rzOpp.toFixed(1)}) x Opp TD allowed (${oppTdRate.toFixed(1)}) + Home Factor (+${hfa})] x Adj (${tdAdj.toFixed(2)}).`;
+  }
+  else if (propType === 'rushing_carries') {
+    const baseCarries = carriesProjection || leg.xSeason || 14;
+    const rushTendency = teamRushTendency;
+    let scriptFactor = 1.0;
+    if (isFavorite7Plus) scriptFactor = 1.20;
+    else if (isUnderdog7Plus) scriptFactor = 0.80;
+    else if (isCloseGame) scriptFactor = 1.00;
+    
+    muFinal = baseCarries * (1 + rushTendency) * scriptFactor;
+    summary = `Carries = [Season Avg (${baseCarries})] x Tendency ${(1 + rushTendency).toFixed(2)}x x Script Factor ${scriptFactor.toFixed(2)}x.`;
+  }
+  else if (propType === 'rushing_yards') {
+    const rL5 = avgPassYardsL5 || leg.x10 || 65; 
+    const rSeason = seasonAvgPassYards || leg.xSeason || 62;
+    const rOpp = oppPassYardsAllowed || leg.oppAllowed || 110;
+    const baseCarries = carriesProjection || leg.xSeason || 14;
+    
+    let scriptFactor = 1.0;
+    if (isFavorite7Plus) scriptFactor = 1.20;
+    else if (isUnderdog7Plus) scriptFactor = 0.80;
+    const projCarries = baseCarries * (1 + teamRushTendency) * scriptFactor;
+    
+    const baseRushYards = (rL5 * 0.35) + (rSeason * 0.25) + (rOpp * 0.25) + (projCarries * avgYpc * 0.15);
+    
+    let olineMul = 1.0;
+    if (olineRunBlockRank <= 10) olineMul = 1.12;
+    else if (olineRunBlockRank >= 23) olineMul = 0.88;
+    
+    let scriptMul = 1.0;
+    if (isFavorite10Plus) scriptMul = 1.15;
+    else if (isUnderdog10Plus) scriptMul = 0.80;
+    
+    let weatherMul = 1.0; 
+    
+    let roleMul = 1.0;
+    if (rbRole === 'workhorse') roleMul = 1.15;
+    else if (rbRole === 'committee') roleMul = 0.85;
+    else if (rbRole === 'third_down') roleMul = 0.70;
+    
+    let handcuffMul = isHandcuff ? 0.75 : 1.0;
+    
+    muFinal = baseRushYards * olineMul * scriptMul * weatherMul * roleMul * handcuffMul;
+    summary = `Rushing Yards = [L5 (${rL5}) x 35% + Season (${rSeason}) x 25% + Opp Allowed (${rOpp}) x 25% + (Proj Carries (${projCarries.toFixed(1)}) x YPC (${avgYpc}) x 15%)] = ${baseRushYards.toFixed(1)} Base. Multipliers: O-Line ${olineMul.toFixed(2)}x, Script ${scriptMul.toFixed(2)}x, Role ${roleMul.toFixed(2)}x${isHandcuff ? ', Handcuff 0.75x' : ''}.`;
+  }
+  else if (propType === 'receiving_yards') {
+    const tShare = targetSharePct !== undefined ? targetSharePct : 0.18; 
+    const teamAttempts = teamProjPassAttempts || 32;
+    const projTargets = tShare * teamAttempts;
+    
+    let yptByRoute = 8.0;
+    if (routeConcept === 'deep') yptByRoute = 10.5;
+    else if (routeConcept === 'intermediate') yptByRoute = 8.0;
+    else if (routeConcept === 'short') yptByRoute = 5.0;
+    
+    const baseRecYards = projTargets * yptByRoute;
+    
+    let scriptMul = 1.0;
+    if (isFavorite10Plus) scriptMul = 0.92;
+    else if (isUnderdog10Plus) scriptMul = 1.15;
+    
+    muFinal = baseRecYards * oppCoverageGrade * separationRate * scriptMul;
+    summary = `Receiving Yards = [Target Share (${(tShare*100).toFixed(0)}%) x Team Attempts (${teamAttempts}) x Route YPT (${yptByRoute.toFixed(1)})] = ${baseRecYards.toFixed(1)} Base. Coverage Adj: ${oppCoverageGrade.toFixed(2)}x, Sec: ${separationRate.toFixed(2)}x, Script: ${scriptMul.toFixed(2)}x.`;
+  }
+  else if (propType === 'receptions') {
+    const tShare = targetSharePct !== undefined ? targetSharePct : 0.18;
+    const teamAttempts = teamProjPassAttempts || 32;
+    const projTargets = tShare * teamAttempts;
+    
+    const cRate = catchRatePct || 0.65;
+    muFinal = projTargets * cRate;
+    summary = `Receptions = Proj Targets (${projTargets.toFixed(1)}) x Catch Rate (${(cRate*100).toFixed(0)}%). [Target Share: ${(tShare*100).toFixed(0)}%, Team Attempts: ${teamAttempts}].`;
+  }
+  else if (propType === 'anytime_td') {
+    const rzShare = rzTargetSharePct !== undefined ? rzTargetSharePct : 0.15;
+    const rzTrips = teamRzTrips || 3.0;
+    const convRate = playerRzTdRate || 0.25;
+    const oppAllowedRate = oppRzTdAllowedRate || 1.0;
+    
+    const tdProb = rzShare * rzTrips * convRate * oppAllowedRate;
+    muFinal = tdProb; 
+    summary = `Anytime TD Prob = RZ share (${(rzShare*100).toFixed(0)}%) x Team RZ Trips (${rzTrips}) x Conv Rate (${(convRate*100).toFixed(0)}%) x Opp RZ Factor (${oppAllowedRate.toFixed(2)}x) = ${(tdProb*100).toFixed(1)}%.`;
+  }
+  else {
+    const x10 = leg.x10 || 0;
+    const x20 = leg.x20 || 0;
+    const xSeason = leg.xSeason || 0;
+    let baseMean = calcBaselineMean(x10, x20, xSeason);
+    if (baseMean === 0) baseMean = line;
+    muFinal = baseMean;
+    summary = "Mathematical expectation based on rolling sample weights";
+  }
+
+  // Divisional and playlist adjustments
+  let finalAdj = 1.0;
+  if (isDivisional) {
+    if (isPlayoffAtmosphere) finalAdj *= 0.90;
+    else finalAdj *= 0.95;
+  }
+  
+  if (finalAdj !== 1.0) {
+    muFinal *= finalAdj;
+    summary += ` Adjusted for ${isPlayoffAtmosphere ? 'Playoff atmospheric division' : 'Divisional familiarity'} by ${finalAdj.toFixed(2)}x.`;
+  }
+
+  if (muFinal < 0) muFinal = 0;
+
+  // Compute Standard Volatility (Sigma)
+  let baseSigma = 1.0;
+  if (muFinal > 0) {
+    if (propType === 'passing_yards') baseSigma = muFinal * 0.18;
+    else if (propType === 'passing_attempts') baseSigma = muFinal * 0.12;
+    else if (propType === 'passing_tds') baseSigma = muFinal * 0.45;
+    else if (propType === 'rushing_carries') baseSigma = muFinal * 0.20;
+    else if (propType === 'rushing_yards') baseSigma = muFinal * 0.28;
+    else if (propType === 'receiving_yards') baseSigma = muFinal * 0.28;
+    else if (propType === 'receptions') baseSigma = muFinal * 0.22;
+    else if (propType === 'anytime_td') baseSigma = muFinal * 0.50;
+    else baseSigma = muFinal * 0.25;
+  }
+  if (baseSigma <= 0) baseSigma = 1.0;
+
+  let pOver = 0;
+  let pUnder = 0;
+  let modelUsed = "Normal";
+
+  if (propType === 'anytime_td') {
+    modelUsed = "Direct Probability";
+    pOver = muFinal; 
+    pUnder = 1 - pOver;
+  } else if (line < 4) {
+    modelUsed = "Poisson";
+    pUnder = poissonCDF(muFinal, line - 0.5);
+    pOver = 1 - pUnder;
+  } else {
+    modelUsed = "Normal";
+    const zScore = (line - muFinal) / baseSigma;
+    pUnder = normalCDF(zScore);
+    pOver = 1 - pUnder;
+  }
+
+  const pModel = prediction === 'Over' ? pOver : pUnder;
+  const pImp = impliedProbFromAmericanOdds(bookOdds);
+  const edgeValue = (pModel - pImp) * 100;
+
+  let edgeSignal = "No bet";
+  const diff = muFinal - line;
+  
+  let rawThresh = 6.0;
+  if (propType === 'passing_yards') rawThresh = 8.0;
+  else if (propType === 'rushing_yards') rawThresh = 6.0;
+  else if (propType === 'receiving_yards') rawThresh = 6.0;
+  else if (propType === 'receptions') rawThresh = 0.6;
+  else if (propType === 'passing_tds') rawThresh = 0.3;
+  else if (propType === 'anytime_td') rawThresh = 0.08; 
+
+  if (propType === 'anytime_td') {
+    if (edgeValue >= 8) {
+      edgeSignal = `OVER — Anytime TD Edge: +${edgeValue.toFixed(1)}%`;
+    }
+  } else {
+    if (diff >= rawThresh) {
+      edgeSignal = `OVER — Edge: +${diff.toFixed(2)}`;
+    } else if (diff <= -rawThresh) {
+      edgeSignal = `UNDER — Edge: -${Math.abs(diff).toFixed(2)}`;
+    }
+  }
+
+  let nflConfidence = "No Unit";
+  if (propType === 'passing_yards') {
+    const absDiff = Math.abs(diff);
+    if (absDiff >= 20) nflConfidence = "Strong (2 units)";
+    else if (absDiff >= 13) nflConfidence = "Moderate (1.5 units)";
+    else if (absDiff >= 8) nflConfidence = "Lean (1 unit)";
+  } else if (propType === 'rushing_yards') {
+    const absDiff = Math.abs(diff);
+    if (absDiff >= 16) nflConfidence = "Strong (2 units)";
+    else if (absDiff >= 10) nflConfidence = "Moderate (1.5 units)";
+    else if (absDiff >= 6) nflConfidence = "Lean (1 unit)";
+  } else if (propType === 'receiving_yards') {
+    const absDiff = Math.abs(diff);
+    if (absDiff >= 15) nflConfidence = "Strong (2 units)";
+    else if (absDiff >= 10) nflConfidence = "Moderate (1.5 units)";
+    else if (absDiff >= 6) nflConfidence = "Lean (1 unit)";
+  } else {
+    if (edgeValue >= 15) nflConfidence = "Strong (2 units)";
+    else if (edgeValue >= 8) nflConfidence = "Moderate (1.5 units)";
+    else if (edgeValue >= 4) nflConfidence = "Lean (1 unit)";
+  }
+
+  return {
+    muPlayer: muFinal,
+    mMin: 1.0,
+    mPace: 1.0,
+    mOpp: 1.0,
+    muFinal,
+    sigmaFinal: baseSigma,
+    modelUsed,
+    pOver,
+    pUnder,
+    pModel,
+    pImp,
+    edge: edgeValue,
+    confidence: edgeValue >= 8 ? 0.95 : 0.70,
+    nflEdgeSignal: edgeSignal,
+    nflFormulaSummary: summary,
+    nflPropType: propType,
+    nflConfidenceText: nflConfidence
+  };
+};
+
 export const calculateEngineMetrics = (leg: BetLeg) => {
   // ROUTING DIRECTIVE: If the sport is MLB, redirect entirely to the dedicated MLB mathematical base
   if ((leg.league as any) === 'MLB' || (leg.league as any) === League.MLB) {
     return calculateMlbEngineMetrics(leg);
+  }
+
+  // NFL ROUTING DIRECTIVE: If the sport is NFL, redirect entirely to the dedicated NFL Player Prop base
+  if ((leg.league as any) === 'NFL' || (leg.league as any) === League.NFL) {
+    return calculateNflEngineMetrics(leg);
   }
 
   const {

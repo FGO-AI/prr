@@ -278,7 +278,7 @@ export const fetchTrendingPicks = async (tier: SubscriptionTier = SubscriptionTi
     // Fetch live schedule data (including playoff stages) from our shared backend endpoint
     let scheduleContext = "";
     try {
-        const res = await fetch('/api/nba/games/today');
+        const res = await fetch('/api/games/NBA');
         if (res.ok) {
             const games = await res.json();
             if (games && games.length > 0) {
@@ -364,14 +364,14 @@ export const generateParlays = async (
     // Fetch live schedule data from our shared backend endpoint to feed into the parlay engine
     let scheduleContext = "";
     try {
-        const res = await fetch('/api/nba/games/today');
+        const res = await fetch(`/api/games/${league}`);
         if (res.ok) {
             const games = await res.json();
             if (games && games.length > 0) {
-                scheduleContext = `VERIFIED CURRENT NBA PLAYSLATE (including Playoffs):
+                scheduleContext = `VERIFIED CURRENT ${league} PLAYSLATE:
 ${games.map((g: any) => `- MATCH: ${g.awayTeam} at ${g.homeTeam} (${g.gameTime}) - Spread: ${g.bookSpread}, Total: ${g.bookTotal} ${g.seriesInfo ? `[${g.seriesInfo}]` : ''}`).join('\n')}
 
-STRICT PLAY-SLATE FOCUS: You MUST focus search grounding on finding live player prop lines for players actively belongs to the teams listed in the verified schedule above. Do not recommend players for teams not active in this slate unless specifically asked by the filter context.`;
+STRICT PLAY-SLATE FOCUS: You MUST focus search grounding on finding live player prop lines for players actively belonging to the teams listed in the verified schedule above. Do not recommend players for teams not active in this slate unless specifically asked by the filter context.`;
             }
         }
     } catch (e) {
