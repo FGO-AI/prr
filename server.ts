@@ -25,6 +25,46 @@ const getGeminiClient = () => {
   });
 };
 
+interface CacheEntry {
+  data: any;
+  timestamp: number;
+  ttl: number;
+}
+
+class SimpleCache {
+  private store = new Map<string, CacheEntry>();
+
+  set(key: string, data: any, ttlMinutes: number = 5) {
+    this.store.set(key, {
+      data,
+      timestamp: Date.now(),
+      ttl: ttlMinutes * 60 * 1000
+    });
+  }
+
+  get(key: string) {
+    const entry = this.store.get(key);
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > entry.ttl) {
+      this.store.delete(key);
+      return null;
+    }
+    return entry.data;
+  }
+
+  clear(prefix?: string) {
+    if (!prefix) {
+      this.store.clear();
+      return;
+    }
+    this.store.forEach((_, key) => {
+      if (key.startsWith(prefix)) this.store.delete(key);
+    });
+  }
+}
+
+const cache = new SimpleCache();
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -34,6 +74,10 @@ async function startServer() {
   // API Proxy for The Odds API
   app.get("/api/odds/:sport", async (req, res) => {
     const { sport } = req.params;
+    const cacheKey = `odds_${sport.toLowerCase()}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
     const apiKey = process.env.ODDS_API_KEY;
 
     if (!apiKey) {
@@ -45,6 +89,7 @@ async function startServer() {
       const url = `https://api.the-odds-api.com/v4/sports/${sport}/odds/?apiKey=${apiKey}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
       const response = await fetch(url);
       const data = await response.json();
+      cache.set(cacheKey, data, 5); // Game lines / odds TTL = 5 minutes
       res.json(data);
     } catch (error) {
       console.error("Proxy error (odds):", error);
@@ -54,6 +99,10 @@ async function startServer() {
 
   app.get("/api/props/:sport/:gameId/:market", async (req, res) => {
     const { sport, gameId, market } = req.params;
+    const cacheKey = `props_${sport.toLowerCase()}_${gameId.toLowerCase()}_${market.toLowerCase()}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
     const apiKey = process.env.ODDS_API_KEY;
 
     if (!apiKey) {
@@ -65,6 +114,7 @@ async function startServer() {
       const url = `https://api.the-odds-api.com/v4/sports/${sport}/events/${gameId}/odds/?apiKey=${apiKey}&regions=us&markets=${market}&oddsFormat=american`;
       const response = await fetch(url);
       const data = await response.json();
+      cache.set(cacheKey, data, 5); // Game lines / odds TTL = 5 minutes
       res.json(data);
     } catch (error) {
       console.error("Proxy error (props):", error);
@@ -75,6 +125,10 @@ async function startServer() {
   // GET /api/games/:sport - Lists active sport game matchups
   app.get("/api/games/:sport", async (req, res) => {
     const sportUpper = (req.params.sport || "NBA").toUpperCase();
+    const cacheKey = `games_${sportUpper.toLowerCase()}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
     const apiKey = process.env.ODDS_API_KEY;
 
     const fallbackGames: Record<string, any[]> = {
@@ -102,6 +156,7 @@ async function startServer() {
 
     if (!apiKey) {
       console.warn("ODDS_API_KEY is not configured. Utilizing standard model fallback matchups.");
+      cache.set(cacheKey, selectedGames, 5); // Game lines / odds TTL = 5 minutes
       return res.json(selectedGames);
     }
 
@@ -119,6 +174,7 @@ async function startServer() {
       }
       const rawGames = await response.json();
       if (!Array.isArray(rawGames) || rawGames.length === 0) {
+        cache.set(cacheKey, selectedGames, 5);
         return res.json(selectedGames);
       }
 
@@ -168,19 +224,26 @@ async function startServer() {
         };
       });
 
+      cache.set(cacheKey, parsedGames, 5); // Game lines / odds TTL = 5 minutes
       res.json(parsedGames);
     } catch (error) {
       console.error(`Error loading active game lines for ${sportUpper}:`, error);
+      cache.set(cacheKey, selectedGames, 5);
       res.json(selectedGames);
     }
   });
 
   // Backward compatible wrapper
   app.get("/api/nba/games/today", async (req, res) => {
+    const cacheKey = "nba_games_today";
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
     const fallbackGames = [
       { id: "g1", homeTeam: "Boston Celtics", awayTeam: "Miami Heat", gameTime: "08:30 PM EST (NBA Season)", bookSpread: -6.5, bookTotal: 216.5, seriesInfo: "Standard Model Simulation", bookHomeML: -250, bookAwayML: 210 },
       { id: "g2", homeTeam: "Dallas Mavericks", awayTeam: "Oklahoma City Thunder", gameTime: "09:00 PM EST (NBA Season)", bookSpread: -2.5, bookTotal: 224.0, seriesInfo: "Standard Model Simulation", bookHomeML: -140, bookAwayML: 120 }
     ];
+    cache.set(cacheKey, fallbackGames, 1); // Live scores TTL = 1 minute
     res.json(fallbackGames);
   });
 
@@ -264,9 +327,15 @@ async function startServer() {
   }
 
   async function compilePlayerStats(sport: string, playerFullName: string) {
+    const cacheKey = `player_stats_${sport.toLowerCase()}_${playerFullName.toLowerCase().replace(/\s+/g, '_')}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return cached;
+
     const nameParts = playerFullName.trim().split(/\s+/);
     const lastName = nameParts[nameParts.length - 1] || playerFullName;
     const firstName = nameParts[0] || "";
+
+    const ttl = sport.toUpperCase() === "NFL" ? 15 : 10; // NFL = 15m (NFL team stats), NBA/MLB = 10m
 
     let playersPath = "/v1/players";
     let statsPath = "/v1/stats";
@@ -306,7 +375,7 @@ async function startServer() {
         const usg = Math.min(38, Math.max(14, Math.round((pts * 0.85 + ast * 0.4) * 1.1)));
         const ts = Math.round(fg_pct * 105 + 10);
 
-        return {
+        const result = {
           playerName: officialName,
           usg,
           ts,
@@ -318,6 +387,8 @@ async function startServer() {
           propType: "Points",
           summary: `Season average: ${pts} PTS, ${ast} AST, ${reb} REB (${minutes} MPG)`
         };
+        cache.set(cacheKey, result, ttl);
+        return result;
       }
     }
 
@@ -342,7 +413,7 @@ async function startServer() {
         const usg = Math.min(38, Math.max(14, Math.round((pts * 0.85 + ast * 0.4) * 1.1)));
         const ts = 58;
 
-        return {
+        const result = {
           playerName: officialName,
           usg,
           ts,
@@ -354,6 +425,8 @@ async function startServer() {
           propType: "Points",
           summary: `Last ${count} games average: ${pts} PTS, ${ast} AST, ${reb} REB`
         };
+        cache.set(cacheKey, result, ttl);
+        return result;
       } else if (sport === "NFL") {
         let totalPassYds = 0, totalPassTds = 0;
         let totalRushYds = 0, totalRecYds = 0;
@@ -372,7 +445,7 @@ async function startServer() {
         let primaryStatValue = avgPass > 10 ? avgPass : (avgRush > avgRec ? avgRush : avgRec);
         let propType = avgPass > 10 ? "Passing Yards" : (avgRush > avgRec ? "Rushing Yards" : "Receiving Yards");
 
-        return {
+        const result = {
           playerName: officialName,
           usg: avgPass > 10 ? 35 : 22,
           ts: 59,
@@ -381,6 +454,8 @@ async function startServer() {
           propType,
           summary: `Last ${count} games average: PassYds: ${avgPass}, PassTDs: ${avgPassTds}, RushYds: ${avgRush}, RecYds: ${avgRec}`
         };
+        cache.set(cacheKey, result, ttl);
+        return result;
       } else if (sport === "MLB") {
         let totalKs = 0, totalHits = 0;
         logs.forEach((log: any) => {
@@ -390,7 +465,7 @@ async function startServer() {
         const avgKs = Number((totalKs / count).toFixed(1));
         const avgHits = Number((totalHits / count).toFixed(1));
 
-        return {
+        const result = {
           playerName: officialName,
           usg: avgKs > 0 ? 15 : 22,
           ts: 55,
@@ -399,6 +474,8 @@ async function startServer() {
           propType: avgKs > 0 ? "Pitcher Strikeouts" : "Total Hits",
           summary: `Last ${count} games average: Strikeouts: ${avgKs}, Hits: ${avgHits}`
         };
+        cache.set(cacheKey, result, ttl);
+        return result;
       }
     }
 
@@ -414,6 +491,20 @@ async function startServer() {
     }
 
     const activeSport = sport.toUpperCase();
+
+    const bodyKey = JSON.stringify({
+      sport: activeSport,
+      homeTeam: homeTeam.toLowerCase(),
+      awayTeam: awayTeam.toLowerCase(),
+      bookSpread,
+      bookTotal,
+      bookHomeML,
+      bookAwayML,
+      customParams
+    });
+    const cacheKey = `predict_${bodyKey}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
 
     // Resolve live player averages from Balldontlie beforehand
     const homePlayersList = getPlayersForTeam(homeTeam);
@@ -850,7 +941,9 @@ async function startServer() {
     };
 
     if (!ai) {
-      return res.json(generateFallbackPrediction());
+      const fallback = generateFallbackPrediction();
+      cache.set(cacheKey, fallback, 30); // Gemini AI analysis = 30 minutes
+      return res.json(fallback);
     }
 
     try {
@@ -1040,13 +1133,25 @@ async function startServer() {
       if (response.text) {
         const parsed = JSON.parse(response.text.trim());
         parsed.sport = parsed.sport || activeSport;
+        cache.set(cacheKey, parsed, 30); // Gemini AI analysis = 30 minutes
         return res.json(parsed);
       }
-      res.json(generateFallbackPrediction());
+      const fallback = generateFallbackPrediction();
+      cache.set(cacheKey, fallback, 30);
+      res.json(fallback);
     } catch (error) {
       console.error(`AI ${sport} prediction formula error:`, error);
-      res.json(generateFallbackPrediction());
+      const fallback = generateFallbackPrediction();
+      cache.set(cacheKey, fallback, 30);
+      res.json(fallback);
     }
+  });
+
+  // Optional Cache Bust Endpoint
+  app.post('/api/cache/clear', (req, res) => {
+    const { prefix } = req.body;
+    cache.clear(prefix);
+    res.json({ cleared: true, prefix: prefix || 'all' });
   });
 
   // Backward compatible route mapping
