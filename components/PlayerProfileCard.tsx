@@ -15,7 +15,7 @@ import {
 interface PlayerProfileCardProps {
   data: ParlayRecommendation;
   bankroll?: number;
-  onPlaceBet?: () => void;
+  onPlaceBet?: (updatedData?: ParlayRecommendation) => void;
   rank?: number;
 }
 
@@ -134,6 +134,17 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data, bank
     const [shortWeek, setShortWeek] = useState<boolean>(leg?.shortWeek || false);
     const [facingManCoverage, setFacingManCoverage] = useState<boolean>(leg?.facingManCoverage || false);
     
+    // Rushing Avg states
+    const [avgRushYardsL5, setAvgRushYardsL5] = useState<number>(
+      leg?.avgRushYardsL5 || leg?.x10 || 65
+    );
+    const [seasonAvgRushYards, setSeasonAvgRushYards] = useState<number>(
+      leg?.seasonAvgRushYards || leg?.xSeason || 62
+    );
+    const [oppRushYardsAllowed, setOppRushYardsAllowed] = useState<number>(
+      leg?.oppRushYardsAllowed || leg?.oppAllowed || 110
+    );
+    
     // Rushing
     const [carriesProjection, setCarriesProjection] = useState<number>(leg?.carriesProjection || leg?.xSeason || 14);
     const [avgYpc, setAvgYpc] = useState<number>(leg?.avgYpc || 4.2);
@@ -173,6 +184,9 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data, bank
             setAvgPassYardsL5(leg.avgPassYardsL5 || leg.x10 || 240);
             setSeasonAvgPassYards(leg.seasonAvgPassYards || leg.xSeason || 235);
             setOppPassYardsAllowed(leg.oppPassYardsAllowed || leg.oppAllowed || 220);
+            setAvgRushYardsL5(leg.avgRushYardsL5 || leg.x10 || 65);
+            setSeasonAvgRushYards(leg.seasonAvgRushYards || leg.xSeason || 62);
+            setOppRushYardsAllowed(leg.oppRushYardsAllowed || leg.oppAllowed || 110);
             setQbTdRate(leg.qbTdRate || 0.045);
             setQbAttemptsAvg(leg.qbAttemptsAvg || leg.xSeason || 34);
             setRzOppRate(leg.rzOppRate || 1.0);
@@ -228,6 +242,9 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data, bank
             avgPassYardsL5,
             seasonAvgPassYards,
             oppPassYardsAllowed,
+            avgRushYardsL5,
+            seasonAvgRushYards,
+            oppRushYardsAllowed,
             qbTdRate,
             qbAttemptsAvg,
             rzOppRate,
@@ -263,7 +280,9 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data, bank
         });
     }, [
         leg, customLine, customPrediction, customOdds, customMins, customPace, customOppFactor,
-        avgPassYardsL5, seasonAvgPassYards, oppPassYardsAllowed, qbTdRate, qbAttemptsAvg, rzOppRate, oppPosTdRate,
+        avgPassYardsL5, seasonAvgPassYards, oppPassYardsAllowed,
+        avgRushYardsL5, seasonAvgRushYards, oppRushYardsAllowed,
+        qbTdRate, qbAttemptsAvg, rzOppRate, oppPosTdRate,
         oppPassFunnel, impliedGameTotal, spreadPoints, missingWR, domeToColdOutdoor, windSpeedMph, offBye, shortWeek,
         facingManCoverage, carriesProjection, avgYpc, olineRunBlockRank, rbRole, isHandcuff, teamRushTendency,
         targetSharePct, teamProjPassAttempts, avgYpt, oppCoverageGrade, separationRate, routeConcept, catchRatePct,
@@ -277,8 +296,94 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data, bank
         }, 800);
     };
 
+    const handleAddLeg = () => {
+        if (!onPlaceBet) return;
+        
+        const updatedLegs = data.legs.map((l, idx) => {
+            if (idx === selectedLegIdx) {
+                return {
+                    ...l,
+                    line: customLine,
+                    prediction: customPrediction,
+                    bookOdds: customOdds,
+                    expectedMins: customMins,
+                    expectedPace: customPace,
+                    oppAllowed: customOppFactor,
+                    
+                    // NFL PASS
+                    avgPassYardsL5,
+                    seasonAvgPassYards,
+                    oppPassYardsAllowed,
+                    qbTdRate,
+                    qbAttemptsAvg,
+                    rzOppRate,
+                    oppPosTdRate,
+                    oppPassFunnel,
+                    impliedGameTotal,
+                    spreadPoints,
+                    
+                    // NFL RUSH
+                    avgRushYardsL5,
+                    seasonAvgRushYards,
+                    oppRushYardsAllowed,
+                    
+                    // Toggles
+                    missingWR,
+                    domeToColdOutdoor,
+                    windSpeedMph,
+                    offBye,
+                    shortWeek,
+                    facingManCoverage,
+                    
+                    // Rushing toggles
+                    carriesProjection,
+                    avgYpc,
+                    olineRunBlockRank,
+                    rbRole,
+                    isHandcuff,
+                    teamRushTendency,
+                    
+                    // Receiving
+                    targetSharePct,
+                    teamProjPassAttempts,
+                    avgYpt,
+                    oppCoverageGrade,
+                    separationRate,
+                    routeConcept,
+                    catchRatePct,
+                    
+                    // Anytime TD
+                    rzTargetSharePct,
+                    teamRzTrips,
+                    playerRzTdRate,
+                    oppRzTdAllowedRate,
+                    
+                    isDivisional,
+                    isPlayoffAtmosphere,
+                    
+                    modelProb: metrics?.modelProb || l.modelProb,
+                    edge: metrics?.edge || l.edge,
+                    rationale: metrics?.nflFormulaSummary || metrics?.mlbFormulaSummary || l.rationale
+                };
+            }
+            return l;
+        });
+
+        const updatedParlay: ParlayRecommendation = {
+            ...data,
+            legs: updatedLegs,
+            jointProbAdjusted: metrics?.jointProbAdjusted || data.jointProbAdjusted,
+            totalOdds: metrics?.totalOdds || data.totalOdds,
+            kellyStake: metrics?.kellyStake || data.kellyStake,
+            summary: metrics?.summary || data.summary
+        };
+
+        onPlaceBet(updatedParlay);
+    };
+
     if (!leg || !metrics) return null;
 
+    const propType = metrics?.nflPropType;
     const sideColor = customPrediction === 'Over' ? 'emerald' : 'rose';
 
     return (
@@ -568,6 +673,44 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data, bank
 
                                         {(metrics?.nflPropType === 'rushing_yards' || metrics?.nflPropType === 'rushing_carries') && (
                                             <div className="space-y-3 animate-fadeIn">
+                                                {propType === 'rushing_yards' && (
+                                                    <div className="grid grid-cols-3 gap-2">
+                                                        <div>
+                                                            <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">
+                                                                L5 Rush Yards
+                                                            </label>
+                                                            <input
+                                                                type="number"
+                                                                value={avgRushYardsL5}
+                                                                onChange={e => setAvgRushYardsL5(parseFloat(e.target.value) || 0)}
+                                                                className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg focus:border-blue-500 outline-none"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">
+                                                                Season Rush Avg
+                                                            </label>
+                                                            <input
+                                                                type="number"
+                                                                value={seasonAvgRushYards}
+                                                                onChange={e => setSeasonAvgRushYards(parseFloat(e.target.value) || 0)}
+                                                                className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg focus:border-blue-500 outline-none"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">
+                                                                Opp Rush Allowed
+                                                            </label>
+                                                            <input
+                                                                type="number"
+                                                                value={oppRushYardsAllowed}
+                                                                onChange={e => setOppRushYardsAllowed(parseFloat(e.target.value) || 0)}
+                                                                className="w-full bg-gray-950 border border-gray-800 text-white font-mono text-[10px] px-2 py-1.5 rounded-lg focus:border-blue-500 outline-none"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
+
                                                 <div className="grid grid-cols-3 gap-2">
                                                     <div>
                                                         <label className="text-[7px] text-gray-500 uppercase font-mono font-bold">Proj Carries</label>
@@ -1053,7 +1196,7 @@ export const PlayerProfileCard: React.FC<PlayerProfileCardProps> = ({ data, bank
                         </div>
 
                         <button 
-                           onClick={onPlaceBet}
+                           onClick={handleAddLeg}
                            className="w-full py-5 bg-emerald-500 text-gray-950 rounded-2xl font-bold uppercase tracking-[0.3em] text-[10px] hover:bg-emerald-600 transition-all flex items-center justify-center gap-3 group/btn shadow-lg shadow-emerald-500/20"
                         >
                            <Target size={16} className="group-hover/btn:scale-125 transition-transform" />

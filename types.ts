@@ -109,6 +109,9 @@ export interface BetLeg {
   avgPassYardsL5?: number;
   seasonAvgPassYards?: number;
   oppPassYardsAllowed?: number;
+  avgRushYardsL5?: number;
+  seasonAvgRushYards?: number;
+  oppRushYardsAllowed?: number;
   paceBonusMultiplier?: number;
   gameScriptMultiplier?: number;
   weatherFactor?: number;

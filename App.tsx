@@ -542,7 +542,7 @@ function App() {
                             key={index} 
                             data={item} 
                             bankroll={formData.bankroll} 
-                            onPlaceBet={() => handlePlaceBet(item)}
+                            onPlaceBet={(updatedItem) => handlePlaceBet(updatedItem || item)}
                             rank={index + 1}
                           />
                         ))

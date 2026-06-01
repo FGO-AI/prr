@@ -380,9 +380,9 @@ export const calculateNflEngineMetrics = (leg: BetLeg) => {
     summary = `Carries = [Season Avg (${baseCarries})] x Tendency ${(1 + rushTendency).toFixed(2)}x x Script Factor ${scriptFactor.toFixed(2)}x.`;
   }
   else if (propType === 'rushing_yards') {
-    const rL5 = avgPassYardsL5 || leg.x10 || 65; 
-    const rSeason = seasonAvgPassYards || leg.xSeason || 62;
-    const rOpp = oppPassYardsAllowed || leg.oppAllowed || 110;
+    const rL5 = leg.avgRushYardsL5 || leg.x10 || 65;
+    const rSeason = leg.seasonAvgRushYards || leg.xSeason || 62;
+    const rOpp = leg.oppRushYardsAllowed || leg.oppAllowed || 110;
     const baseCarries = carriesProjection || leg.xSeason || 14;
     
     let scriptFactor = 1.0;
