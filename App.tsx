@@ -12,6 +12,7 @@ import { AboutPage } from './components/AboutPage';
 import { AccessCodePage } from './components/AccessCodePage';
 import { GameOutcomePredictor } from './components/GameOutcomePredictor';
 import { calculateEngineMetrics } from './services/projectionEngine';
+import { ModelAccuracyDashboard } from './components/ModelAccuracyDashboard';
 import { 
   BarChart3, ShieldAlert, Home, Zap, User, RefreshCw, 
   Target, TrendingUp, Trophy, HistoryIcon, CheckCircle2, XCircle, ListIcon, Clock, Calendar, Timer,
@@ -19,7 +20,7 @@ import {
 } from './components/Icons';
 
 type ViewState = 'landing' | 'signup' | 'login' | 'app' | 'about' | 'access';
-type AppTab = 'search' | 'history' | 'ml';
+type AppTab = 'search' | 'history' | 'ml' | 'accuracy';
 
 const TIER_MAX_SPINS = {
   [SubscriptionTier.FREE]: 5,
@@ -350,6 +351,30 @@ function App() {
     handleGenerate(false, { ...formData, filters: '' });
   };
 
+  const updateLegClosingLine = (pickId: string, playerName: string, statType: string, closingLine: number) => {
+    if (!currentUser) return;
+    const updatedHistory = userPickHistory.map(pick => {
+      if (pick.id === pickId) {
+        return {
+          ...pick,
+          legs: pick.legs.map(leg => {
+            if (leg.playerName === playerName && leg.statType === statType) {
+              return {
+                ...leg,
+                closingLine
+              };
+            }
+            return leg;
+          })
+        };
+      }
+      return pick;
+    });
+
+    setUserPickHistory(updatedHistory);
+    localStorage.setItem(`user_pick_history_${currentUser.id}`, JSON.stringify(updatedHistory));
+  };
+
   const clearHistory = () => {
     if (confirm("Purge historical pick archive?")) {
       setUserPickHistory([]);
@@ -418,15 +443,18 @@ function App() {
       </header>
 
       <div className="bg-gray-900/40 border-b border-gray-800 sticky top-16 z-30 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto px-4 flex items-center gap-6 sm:gap-8">
-           <button onClick={() => setActiveTab('search')} className={`py-4 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] flex items-center gap-2 border-b-2 transition-all ${activeTab === 'search' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
+        <div className="max-w-7xl mx-auto px-4 flex items-center gap-6 sm:gap-8 overflow-x-auto">
+           <button onClick={() => setActiveTab('search')} className={`py-4 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] flex items-center gap-2 border-b-2 transition-all shrink-0 ${activeTab === 'search' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
               <Target size={14} /> Acquisition
            </button>
-           <button onClick={() => setActiveTab('history')} className={`py-4 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] flex items-center gap-2 border-b-2 transition-all ${activeTab === 'history' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
+           <button onClick={() => setActiveTab('history')} className={`py-4 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] flex items-center gap-2 border-b-2 transition-all shrink-0 ${activeTab === 'history' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
               <Trophy size={14} /> Outcomes
            </button>
-           <button onClick={() => setActiveTab('ml')} className={`py-4 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] flex items-center gap-2 border-b-2 transition-all ${activeTab === 'ml' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
-              <Cpu size={14} /> Predictions
+           <button onClick={() => setActiveTab('ml')} className={`py-4 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] flex items-center gap-2 border-b-2 transition-all shrink-0 ${activeTab === 'ml' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
+               <Cpu size={14} /> Predictions
+           </button>
+           <button onClick={() => setActiveTab('accuracy')} className={`py-4 text-[10px] sm:text-[11px] font-bold uppercase tracking-[0.2em] flex items-center gap-2 border-b-2 transition-all shrink-0 ${activeTab === 'accuracy' ? 'border-emerald-500 text-emerald-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
+               <BarChart3 size={14} /> Accuracy
            </button>
         </div>
       </div>
@@ -684,6 +712,12 @@ function App() {
         {activeTab === 'ml' && (
 			<GameOutcomePredictor />
 		)}
+        {activeTab === 'accuracy' && (
+          <ModelAccuracyDashboard 
+            userPickHistory={userPickHistory}
+            onUpdateLegClosingLine={updateLegClosingLine}
+          />
+        )}
       </main>
 
       <footer className="border-t border-gray-900 mt-12 py-8 bg-gray-950 text-center px-4">

@@ -56,6 +56,7 @@ export interface BetLeg {
   // Historical Settlement
   actualValue?: number;
   settledStatus?: 'Pending' | 'Hit' | 'Miss' | 'Void';
+  closingLine?: number;
   
   // New Engine Variables
   x10?: number;
