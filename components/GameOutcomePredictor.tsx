@@ -1215,19 +1215,6 @@ export const GameOutcomePredictor: React.FC = () => {
                     )}
                   </span>
                   
-                  {prediction.mlEdgePct > 0 && (
-                    <button
-                      onClick={() => {
-                        const mLine = prediction.mlEdgeTeam === prediction.homeTeam ? prediction.bookHomeML : prediction.bookAwayML;
-                        const formattedML = mLine > 0 ? `+${mLine}` : `${mLine}`;
-                        const winRate = Math.round((prediction.mlEdgeTeam === prediction.homeTeam ? prediction.projectedHomeWinProb : prediction.projectedAwayWinProb) * 100);
-                        lockAndTrackPick(`${prediction.mlEdgeTeam} ML (${formattedML})`, winRate, prediction.mlEdgePct);
-                      }}
-                      className="px-3.5 py-1.5 shrink-0 bg-emerald-550 text-gray-950 hover:bg-emerald-600 rounded text-[9.5px] font-black tracking-widest uppercase transition-all"
-                    >
-                      Track ML Pick
-                    </button>
-                  )}
                 </div>
               </div>
 
@@ -1352,199 +1339,22 @@ export const GameOutcomePredictor: React.FC = () => {
                       
                       <div className="border-t border-gray-800 mt-3 pt-2.5 flex items-center justify-between">
                         <span className="text-[9px] text-emerald-400 block font-bold font-mono">Edge: {prop.edgePct}%</span>
-                        <button 
-                          onClick={() => lockAndTrackPick(`${prop.playerName} ${prop.overUnder} ${prop.line} ${prop.statType}`, prop.edgePct, 3.0)}
-                          className="text-[9px] uppercase font-bold text-blue-400 hover:text-blue-300 flex items-center gap-1 font-mono transition-colors"
-                        >
-                          <Lock size={10} /> Track Prop
-                        </button>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Action layout footer for saving game pick */}
+              {/* Action layout footer */}
               <div className="border-t border-gray-800 pt-5 flex flex-col sm:flex-row justify-between items-center gap-4">
                 <span className="text-[9px] text-gray-500 uppercase font-mono">
-                  Grounded NBA Model calculation locked down
+                  Grounded {selectedLeague} Model calculation complete
                 </span>
-                
-                <button 
-                  onClick={() => lockAndTrackPick()}
-                  className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-gray-950 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-2 "
-                >
-                  <Lock size={12} /> Lock Prediction & Track Result
-                </button>
               </div>
 
             </div>
           )}
 
-        </div>
-
-      </div>
-
-      {/* Ledger Tracker and Mock-Global leaderboard components (Week 4 MVP specs) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
-        {/* Ledger column (7 cols) */}
-        <div className="lg:col-span-7 space-y-6">
-          <div className="bg-gray-905 border border-gray-805 rounded-xl p-5 shadow-lg space-y-4">
-            
-            <div className="flex items-center justify-between border-b border-gray-800 pb-3 mb-2">
-              <span className="text-[10px] text-white font-bold uppercase tracking-wider font-mono flex items-center gap-2">
-                <Trophy size={14} className="text-yellow-500" /> My Outcome Ledger ({trackedPicks.length})
-              </span>
-              <div className="flex items-center gap-2 text-[8px] font-mono text-gray-500">
-                <button 
-                  onClick={() => setSortBy('highest')}
-                  className={`px-2 py-1 uppercase font-bold rounded border ${
-                    sortBy === 'highest' ? 'bg-gray-850 border-gray-700 text-white' : 'border-transparent'
-                  }`}
-                >
-                  Highest Edge First
-                </button>
-                <button 
-                  onClick={() => setSortBy('recent')}
-                  className={`px-2 py-1 uppercase font-bold rounded border ${
-                    sortBy === 'recent' ? 'bg-gray-850 border-gray-700 text-white' : 'border-transparent'
-                  }`}
-                >
-                  Recent First
-                </button>
-              </div>
-            </div>
-
-            {/* Performance Stats banner */}
-            <div className="grid grid-cols-4 gap-3 bg-gray-950 p-4 rounded-xl border border-gray-800 text-center">
-              <div>
-                <span className="text-[8px] text-gray-500 font-bold uppercase tracking-widest block">Total Settled</span>
-                <span className="text-sm font-mono font-bold text-white mt-1 block">{statsSummary.total}</span>
-              </div>
-              <div>
-                <span className="text-[8px] text-emerald-500 font-bold uppercase tracking-widest block">Wins</span>
-                <span className="text-sm font-mono font-bold text-emerald-400 mt-1 block">{statsSummary.wins}</span>
-              </div>
-              <div>
-                <span className="text-[8px] text-rose-500 font-bold uppercase tracking-widest block">Losses</span>
-                <span className="text-sm font-mono font-bold text-rose-400 mt-1 block">{statsSummary.losses}</span>
-              </div>
-              <div>
-                <span className="text-[8px] text-blue-400 font-bold uppercase tracking-widest block">Win % Ratio</span>
-                <span className="text-sm font-mono font-bold text-blue-400 mt-1 block">{statsSummary.wr}%</span>
-              </div>
-            </div>
-
-            {/* Tracked records list */}
-            <div className="space-y-3.5 max-h-96 overflow-y-auto">
-              {trackedPicks
-                .sort((a, b) => {
-                  if (sortBy === 'highest') {
-                    return b.edge - a.edge;
-                  }
-                  return 0; // standard array state ordering
-                })
-                .map((p) => (
-                  <div key={p.id} className="p-4 bg-gray-900 border border-gray-800 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:border-gray-700 transition-colors">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] text-blue-400 font-mono">{p.createdAt}</span>
-                        <span className="text-[9px] font-mono font-bold text-emerald-400">-{p.edge} pts Edge</span>
-                      </div>
-                      <div className="text-sm font-bold text-white mt-1">
-                        {p.pick}
-                      </div>
-                      <span className="text-[9px] text-gray-500 font-mono uppercase block mt-0.5">{p.matchup}</span>
-                    </div>
-
-                    <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-                      {p.result === 'PENDING' ? (
-                        <div className="flex items-center gap-2 w-full md:w-auto">
-                          <button 
-                            onClick={() => updatePickResult(p.id, 'WIN')}
-                            className="flex-1 md:flex-none px-3.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[9px] font-black uppercase tracking-wider rounded border border-emerald-500/15"
-                          >
-                            Mark Win
-                          </button>
-                          <button 
-                            onClick={() => updatePickResult(p.id, 'LOSS')}
-                            className="flex-1 md:flex-none px-3.5 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[9px] font-black uppercase tracking-wider rounded border border-rose-500/15"
-                          >
-                            Mark Loss
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-3">
-                          <span className={`px-3 py-1 rounded text-[9px] font-black font-mono tracking-wider uppercase border ${
-                            p.result === 'WIN' 
-                              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
-                              : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
-                          }`}>
-                            {p.result}
-                          </span>
-                        </div>
-                      )}
-                      
-                      <button 
-                        onClick={() => deleteTrackedPick(p.id)}
-                        className="p-1.5 hover:bg-gray-800 rounded transition-colors text-gray-500 hover:text-rose-500"
-                        title="Delete tracked pick"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-
-              {trackedPicks.length === 0 && (
-                <div className="text-center p-8 bg-gray-950 border border-gray-800 rounded-xl text-gray-500 text-[10px] uppercase font-mono tracking-wider select-none">
-                  🔐 No predictions locked. Activate engine above and lock targets to compile outcome ledger.
-                </div>
-              )}
-            </div>
-
-          </div>
-        </div>
-
-        {/* Global Competitor Leaderboard (5 cols) */}
-        <div className="lg:col-span-5">
-          <div className="bg-gray-905 border border-gray-805 rounded-xl p-5 shadow-lg space-y-4">
-            <span className="text-[10px] text-white font-bold uppercase tracking-wider font-mono flex items-center gap-2 border-b border-gray-800 pb-3 mb-2">
-              <Award size={14} className="text-yellow-500 animate-pulse" /> Daily Shark Leaderboard
-            </span>
-
-            <div className="space-y-2.5">
-              {mockLeaderboard.map((competitor, idx) => (
-                <div 
-                  key={idx} 
-                  className={`p-3.5 rounded-xl border flex justify-between items-center transition-all ${
-                    competitor.isUser 
-                      ? 'bg-blue-500/10 border-blue-500/30' 
-                      : 'bg-gray-900 border-gray-800'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-gray-500">#{idx + 1}</span>
-                    <div>
-                      <span className={`text-xs font-bold leading-none select-none block ${competitor.isUser ? 'text-blue-300' : 'text-gray-300'}`}>
-                        {competitor.name}
-                      </span>
-                      <span className="text-[9px] text-gray-500 font-mono tracking-widest uppercase block mt-1.5">
-                        {competitor.wins}W - {competitor.losses}L Record
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <span className="text-xs font-mono font-extrabold text-white">{competitor.winRate}%</span>
-                    <span className="text-[9px] text-gray-500 uppercase font-mono tracking-wider block mt-1">Accuracy</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-          </div>
         </div>
 
       </div>
