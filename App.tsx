@@ -6,6 +6,7 @@ import { InputForm } from './components/InputForm';
 import { PlayerProfileCard } from './components/PlayerProfileCard';
 import { LoadingScreen } from './components/LoadingScreen';
 import { LandingPage } from './components/LandingPage';
+import { WinRateChart } from './components/WinRateChart';
 import { SignUpPage } from './components/SignUpPage'; 
 import { LoginPage } from './components/LoginPage';
 import { AboutPage } from './components/AboutPage';
@@ -567,6 +568,9 @@ function App() {
 
         {activeTab === 'history' && (
            <div className="space-y-6 animate-fadeIn">
+              {/* Performance Graph */}
+              <WinRateChart history={userPickHistory} />
+
               {/* Performance Summary */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-gray-900/50 border border-gray-800 p-4 rounded-2xl">
