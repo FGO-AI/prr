@@ -62,6 +62,7 @@ function App() {
   const [nbaMatchups, setNbaMatchups] = useState<any[]>([]);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   
   const [formData, setFormData] = useState<UserInputState>({
     league: League.NBA,
@@ -319,8 +320,8 @@ function App() {
     if (currentUser) {
       localStorage.setItem(`user_pick_history_${currentUser.id}`, JSON.stringify(newHistory));
     }
-    // Optional: show a toast or feedback
-    alert("PICK LOCKED: Added to Outcomes Ledger for tracking.");
+    setToastMessage("PICK LOCKED: Added to Outcomes Ledger for tracking.");
+    setTimeout(() => setToastMessage(null), 3500);
   };
 
   const handleVerifyHistory = async () => {
@@ -727,6 +728,15 @@ function App() {
       <footer className="border-t border-gray-900 mt-12 py-8 bg-gray-950 text-center px-4">
           <p className="text-[9px] text-gray-800 uppercase tracking-[0.4em] font-mono">Quant Protocol V3.5 • High-Edge Model Intelligence</p>
       </footer>
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-950/95 border border-emerald-500/50 text-emerald-300 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 backdrop-blur-md animate-fadeIn">
+          <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
+          <span className="text-xs font-mono font-semibold">{toastMessage}</span>
+          <button onClick={() => setToastMessage(null)} className="text-emerald-400/60 hover:text-emerald-200 ml-2">
+            <X size={14} />
+          </button>
+        </div>
+      )}
       {isLoading && <LoadingScreen />}
     </div>
   );
